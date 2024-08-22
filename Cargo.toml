@@ -1,0 +1,32 @@
+[package]
+name = "tui-tracing"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.38"
+futures = "0.3.30"
+indexmap = "2.4.0"
+itertools = "0.13.0"
+parking_lot = "0.12.3"
+quanta = "0.12.3"
+ratatui = { version = "0.28.0" }
+ratatui-macros = { version = "0.5.0" }
+tokio = { version = "1.39.2", features = [
+    "rt-multi-thread",
+    "macros",
+    "time",
+    "sync",
+] }
+tokio-util = "0.7.11"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[dev-dependencies]
+color-eyre = "0.6.3"
+ratatui = { version = "0.28.0" }
+crossterm = { version = "0.28.1", features = ["event-stream"] }
+tracing-appender = "0.2.3"
+
+[patch.crates-io]
+ratatui = { git = "https://github.com/ratatui-org/ratatui", branch = "jm/terminal-init" }
