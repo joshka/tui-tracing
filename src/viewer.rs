@@ -11,7 +11,7 @@ use ratatui::widgets::{Paragraph, Widget};
 
 use crate::filter::TraceFilter;
 use crate::format::{event_line, FormatOptions};
-use crate::store::{TraceSnapshot, TraceStore};
+use crate::store::{TraceSnapshot, TraceStore, TraceStoreStatus};
 
 /// Event-stream trace viewer for Ratatui applications.
 ///
@@ -53,6 +53,16 @@ impl TraceViewer {
     /// Replace the display-time filter.
     pub fn set_filter(&mut self, filter: TraceFilter) {
         self.filter = filter;
+    }
+
+    /// Return structured status data for app-owned status bars.
+    ///
+    /// This clones a lightweight snapshot of retained records to count visible
+    /// events against the current display filter. It does not render or format row
+    /// text, and display-time filtering does not affect the storage counters.
+    pub fn status(&self) -> TraceViewStatus {
+        let snapshot = self.store.snapshot();
+        self.status_for_snapshot(&snapshot)
     }
 
     /// Return the active formatting options.
@@ -100,6 +110,34 @@ impl TraceViewer {
             .collect()
     }
 
+    fn visible_event_count(&self, snapshot: &TraceSnapshot) -> usize {
+        snapshot
+            .events
+            .iter()
+            .filter(|event| self.filter.matches_event(event, snapshot))
+            .count()
+    }
+
+    fn status_for_snapshot(&self, snapshot: &TraceSnapshot) -> TraceViewStatus {
+        let visible_events = self.visible_event_count(snapshot);
+        TraceViewStatus {
+            scroll_mode: if self.follow_tail {
+                TraceScrollMode::FollowTail
+            } else {
+                TraceScrollMode::Scrollback
+            },
+            scroll_top: self.scroll_top,
+            tail_scroll: self.last_tail_scroll,
+            visible_events,
+            hidden_events: snapshot
+                .status
+                .retained_events
+                .saturating_sub(visible_events),
+            filter: self.filter.clone(),
+            store: snapshot.status,
+        }
+    }
+
     fn scroll(&mut self, text_height: usize, area_height: u16) -> u16 {
         let tail_scroll = u16::try_from(text_height)
             .unwrap_or(u16::MAX)
@@ -124,4 +162,46 @@ impl Widget for &mut TraceViewer {
         let scroll = self.scroll(visible_lines, area.height);
         Paragraph::new(text).scroll((scroll, 0)).render(area, buf);
     }
+}
+
+/// Current scrolling mode for a [`TraceViewer`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceScrollMode {
+    /// The viewer follows the newest visible event.
+    FollowTail,
+
+    /// The user has moved into scrollback.
+    Scrollback,
+}
+
+/// Structured status summary for app-owned trace viewer chrome.
+///
+/// This type intentionally carries data, not formatted text. Applications can use
+/// it to build status bars, headers, telemetry, or tests without coupling to the
+/// library's demo wording.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TraceViewStatus {
+    /// Current scroll behavior.
+    pub scroll_mode: TraceScrollMode,
+
+    /// First visible row offset from the top of the filtered event stream.
+    pub scroll_top: u16,
+
+    /// Last computed tail offset for the filtered event stream.
+    ///
+    /// This value is updated during rendering because it depends on the render
+    /// area height. Before the first render it is zero.
+    pub tail_scroll: u16,
+
+    /// Number of retained events accepted by the active display filter.
+    pub visible_events: usize,
+
+    /// Number of retained events hidden by the active display filter.
+    pub hidden_events: usize,
+
+    /// Active display filter.
+    pub filter: TraceFilter,
+
+    /// Storage status for retained records and storage-level event loss.
+    pub store: TraceStoreStatus,
 }

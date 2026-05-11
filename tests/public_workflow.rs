@@ -3,7 +3,7 @@ use ratatui::Terminal;
 use tracing::subscriber;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
-use tui_tracing::{FieldValue, TraceFilter, TraceLayer, TraceStore, TraceViewer};
+use tui_tracing::{FieldValue, TraceFilter, TraceLayer, TraceScrollMode, TraceStore, TraceViewer};
 
 #[test]
 fn store_status_tracks_empty_capacity_as_dropped_events() {
@@ -201,6 +201,65 @@ fn display_filter_does_not_drop_captured_events() {
     let rendered = buffer_text(terminal.backend().buffer());
     assert!(rendered.contains("visible"));
     assert!(!rendered.contains("hidden by display filter"));
+}
+
+#[test]
+fn viewer_status_reports_follow_mode_and_visible_counts_without_rendering() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::debug!("hidden");
+        tracing::info!("visible");
+        tracing::warn!("also visible");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    viewer.set_filter(TraceFilter::all().with_min_level(tracing::Level::INFO));
+
+    let status = viewer.status();
+    assert_eq!(status.scroll_mode, TraceScrollMode::FollowTail);
+    assert_eq!(status.scroll_top, 0);
+    assert_eq!(status.tail_scroll, 0);
+    assert_eq!(status.visible_events, 2);
+    assert_eq!(status.hidden_events, 1);
+    assert_eq!(status.store.retained_events, 3);
+    assert_eq!(
+        status.filter,
+        TraceFilter::all().with_min_level(tracing::Level::INFO)
+    );
+}
+
+#[test]
+fn viewer_status_reports_scrollback_after_scroll_changes() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..6 {
+            tracing::info!(index, "event-{index}");
+        }
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    render_viewer(&mut viewer, 100, 3);
+
+    let status = viewer.status();
+    assert_eq!(status.scroll_mode, TraceScrollMode::FollowTail);
+    assert_eq!(status.tail_scroll, 3);
+    assert_eq!(status.scroll_top, 3);
+    assert_eq!(status.visible_events, 6);
+
+    viewer.scroll_up(2);
+    let status = viewer.status();
+    assert_eq!(status.scroll_mode, TraceScrollMode::Scrollback);
+    assert_eq!(status.tail_scroll, 3);
+    assert_eq!(status.scroll_top, 1);
+
+    viewer.follow_tail();
+    let status = viewer.status();
+    assert_eq!(status.scroll_mode, TraceScrollMode::FollowTail);
+    assert_eq!(status.scroll_top, status.tail_scroll);
 }
 
 #[test]
