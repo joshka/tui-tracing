@@ -39,7 +39,9 @@ interaction model for diagnostics inside a running TUI.
 `TraceStore::status()` exposes cheap storage counters for status bars and diagnostics: configured
 capacity, retained events, retained spans, captured events, accepted events, evicted events, and
 dropped events. These counters describe storage behavior before display-time filtering, so hiding
-an event with `TraceFilter` does not change the captured, evicted, or dropped totals.
+an event with `TraceFilter` does not change the captured, evicted, or dropped totals. The returned
+status also has helpers for common status-bar decisions such as empty state, remaining event
+capacity, capacity pressure, and whether any captured event has been lost.
 
 ## Basic Usage
 

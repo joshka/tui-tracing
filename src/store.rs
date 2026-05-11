@@ -214,8 +214,36 @@ impl TraceStoreStatus {
         self.evicted_events + self.dropped_events
     }
 
+    /// Return the number of additional events this store can retain before eviction.
+    ///
+    /// This is a point-in-time storage summary. Concurrent capture can make the
+    /// value stale immediately after it is read.
+    pub fn remaining_event_capacity(self) -> usize {
+        self.event_capacity.saturating_sub(self.retained_events)
+    }
+
     /// Return `true` when no events are currently retained.
     pub fn is_empty(self) -> bool {
         self.retained_events == 0
+    }
+
+    /// Return `true` when the retained event buffer has reached its configured capacity.
+    pub fn is_at_event_capacity(self) -> bool {
+        self.retained_events == self.event_capacity
+    }
+
+    /// Return `true` when any captured event is no longer retained.
+    pub fn has_lost_events(self) -> bool {
+        self.lost_events() > 0
+    }
+
+    /// Return `true` when at least one retained event was evicted by capacity pressure.
+    pub fn has_evicted_events(self) -> bool {
+        self.evicted_events > 0
+    }
+
+    /// Return `true` when at least one captured event was discarded before retention.
+    pub fn has_dropped_events(self) -> bool {
+        self.dropped_events > 0
     }
 }
