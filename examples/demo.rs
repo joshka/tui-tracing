@@ -97,7 +97,12 @@ impl App {
             .bg(Color::Blue)
             .add_modifier(Modifier::BOLD);
         let title = Line::from("tui-tracing demo").style(bar_style);
-        let status = demo_status(self.min_level, self.viewer.status()).style(bar_style);
+        let status = demo_status(
+            self.min_level,
+            self.viewer.status(),
+            self.viewer.show_source_locations(),
+        )
+        .style(bar_style);
 
         frame.render_widget(Paragraph::new(title).style(bar_style), title_area);
         if let Some(detail) = self.viewer.selected_detail() {
@@ -128,6 +133,10 @@ impl App {
         match action_for_event(&event) {
             Some(Action::Quit) => self.cancellation_token.cancel(),
             Some(Action::CycleLevel) => self.cycle_level(),
+            Some(Action::ToggleSourceLocations) => {
+                let visible = self.viewer.toggle_source_locations();
+                info!(source_locations = visible, "toggled source locations");
+            }
             Some(Action::SelectNext) => {
                 self.viewer.select_next();
                 self.detail_scroll = 0;
@@ -176,6 +185,7 @@ impl App {
 enum Action {
     Quit,
     CycleLevel,
+    ToggleSourceLocations,
     SelectNext,
     SelectPrevious,
     ClearSelection,
@@ -197,6 +207,7 @@ fn action_for_event(event: &Event) -> Option<Action> {
     match code {
         KeyCode::Char('q') => Some(Action::Quit),
         KeyCode::Char('l') => Some(Action::CycleLevel),
+        KeyCode::Char('s') => Some(Action::ToggleSourceLocations),
         KeyCode::Char('j') => Some(Action::SelectNext),
         KeyCode::Char('k') => Some(Action::SelectPrevious),
         KeyCode::Esc => Some(Action::ClearSelection),
@@ -219,7 +230,11 @@ fn log_ignored_event(event: Event) {
     }
 }
 
-fn demo_status(min_level: Level, status: TraceViewStatus) -> Line<'static> {
+fn demo_status(
+    min_level: Level,
+    status: TraceViewStatus,
+    show_source_locations: bool,
+) -> Line<'static> {
     let mode = match status.scroll_mode {
         TraceScrollMode::FollowTail => "tail",
         TraceScrollMode::Scrollback => "scrollback",
@@ -229,8 +244,14 @@ fn demo_status(min_level: Level, status: TraceViewStatus) -> Line<'static> {
         .map(|index| format!("selected {}/{}", index + 1, status.visible_events))
         .unwrap_or_else(|| "selected none".to_owned());
 
+    let source = if show_source_locations {
+        "source on"
+    } else {
+        "source off"
+    };
+
     Line::from(format!(
-        "q quit | l level {min_level}+ | j/k select | Esc clear | u/d scroll | b/f page | g/G jump | [/] detail | {mode} | {selected} | visible {}/{} | lost {}",
+        "q quit | l level {min_level}+ | s {source} | j/k select | Esc clear | u/d scroll | b/f page | g/G jump | [/] detail | {mode} | {selected} | visible {}/{} | lost {}",
         status.visible_events,
         status.store.retained_events,
         status.store.lost_events()

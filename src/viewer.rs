@@ -137,6 +137,32 @@ impl TraceViewer {
         self.format = format;
     }
 
+    /// Return whether compact event rows include source locations.
+    ///
+    /// Source locations are hidden by default because they are often too wide for
+    /// the main event stream. Selected-event detail still includes captured source
+    /// location metadata regardless of this setting.
+    pub fn show_source_locations(&self) -> bool {
+        self.format.show_location
+    }
+
+    /// Set whether compact event rows include source locations.
+    ///
+    /// This updates display formatting only. It does not change captured records,
+    /// active filters, selection, or scroll position.
+    pub fn set_show_source_locations(&mut self, show: bool) {
+        self.format.show_location = show;
+    }
+
+    /// Toggle source locations in compact event rows and return the new value.
+    ///
+    /// This is a convenience for application keybindings. Selected-event detail
+    /// remains complete whether compact rows show source locations or not.
+    pub fn toggle_source_locations(&mut self) -> bool {
+        self.format.show_location = !self.format.show_location;
+        self.format.show_location
+    }
+
     /// Keep the newest visible event pinned to the bottom of the rendered area.
     pub fn follow_tail(&mut self) {
         self.follow_tail = true;

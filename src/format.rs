@@ -387,3 +387,46 @@ fn level_color(level: Level) -> Color {
         tracing::Level::ERROR => Color::Red,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Local;
+
+    use super::*;
+
+    #[test]
+    fn source_location_uses_file_and_line_when_present() {
+        let event = event_with_location(Some("src/main.rs"), Some(42));
+
+        assert_eq!(format_location(&event), Some("src/main.rs:42: ".to_owned()));
+    }
+
+    #[test]
+    fn source_location_uses_file_without_line_when_line_is_missing() {
+        let event = event_with_location(Some("src/main.rs"), None);
+
+        assert_eq!(format_location(&event), Some("src/main.rs: ".to_owned()));
+    }
+
+    #[test]
+    fn source_location_is_absent_without_file_metadata() {
+        let event = event_with_location(None, Some(42));
+
+        assert_eq!(format_location(&event), None);
+    }
+
+    fn event_with_location(file: Option<&str>, line: Option<u32>) -> EventRecord {
+        EventRecord {
+            id: 0,
+            timestamp: Local::now(),
+            level: Level(tracing::Level::INFO),
+            target: "format_tests".to_owned(),
+            module_path: None,
+            file: file.map(str::to_owned),
+            line,
+            fields: FieldMap::default(),
+            span_id: None,
+            span_stack: Vec::new(),
+        }
+    }
+}

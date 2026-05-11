@@ -85,12 +85,12 @@
 //!
 //! - set or clear the minimum visible level;
 //! - filter by target, module, span name, text, field name, or field value;
+//! - toggle source locations in compact event rows;
 //! - scroll older or newer;
 //! - move by rendered pages;
 //! - jump to the oldest or newest visible event;
 //! - select previous or next visible event;
 //! - expand selected event details;
-//! - toggle source locations;
 //! - toggle aggregation once grouped rows exist.
 //!
 //! Aggregation belongs on the main screen after the raw event stream is reliable.
