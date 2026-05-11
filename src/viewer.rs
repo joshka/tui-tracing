@@ -1,8 +1,27 @@
 //! Ratatui trace viewer.
 //!
-//! [`TraceViewer`] is the high-level TUI integration point. It owns display-time
-//! state such as filters and scrollback, and renders through `impl Widget for
-//! &mut TraceViewer` so applications do not need `StatefulWidget`.
+//! [`TraceViewer`] is the high-level [`ratatui`] integration point. It owns
+//! display-time state such as filters and scrollback, and renders through
+//! `impl Widget for &mut TraceViewer` so applications do not need
+//! [`ratatui::widgets::StatefulWidget`].
+//!
+//! # Common Workflow
+//!
+//! Store a [`TraceViewer`] in application state, mutate it from input handlers, and
+//! render `&mut viewer` in the area assigned to trace output.
+//!
+//! # Lifecycle And Side Effects
+//!
+//! Rendering mutates scroll state because follow-tail and page movement depend on
+//! the [`ratatui::layout::Rect`] height. The widget does not install subscribers,
+//! write files, spawn tasks, or manage terminal state.
+//!
+//! # Related Modules
+//!
+//! - [`crate::store`] retains the records rendered by the viewer.
+//! - [`crate::filter`] owns display-time matching.
+//! - [`crate::record`] and [`crate::field`] define the data shown in rows and selected-event
+//!   detail.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -16,10 +35,38 @@ use crate::format::{FormatOptions, event_line};
 use crate::record::{EventId, EventRecord, SpanId, SpanRecord};
 use crate::store::{TraceSnapshot, TraceStore, TraceStoreStatus};
 
-/// Event-stream trace viewer for Ratatui applications.
+/// Event-stream trace viewer for [`ratatui`] applications.
 ///
 /// The viewer does not install tracing subscribers and does not own capture policy.
 /// It renders retained records from a [`TraceStore`] using display-time filters.
+///
+/// `TraceViewer` is cheap to clone, but clones have independent filter, scroll,
+/// formatting, and selection state. Clones share the same underlying store.
+///
+/// ```
+/// use ratatui::Terminal;
+/// use ratatui::backend::TestBackend;
+/// use tracing::subscriber;
+/// use tracing_subscriber::Registry;
+/// use tracing_subscriber::layer::SubscriberExt;
+/// use tui_tracing::{TraceLayer, TraceViewer};
+///
+/// let (layer, store) = TraceLayer::new();
+/// let subscriber = Registry::default().with(layer);
+///
+/// subscriber::with_default(subscriber, || {
+///     tracing::info!("ready");
+/// });
+///
+/// let mut viewer = TraceViewer::new(store);
+/// let backend = TestBackend::new(80, 3);
+/// let mut terminal = Terminal::new(backend).unwrap();
+/// terminal
+///     .draw(|frame| frame.render_widget(&mut viewer, frame.area()))
+///     .unwrap();
+///
+/// assert_eq!(viewer.status().visible_events, 1);
+/// ```
 #[derive(Clone, Debug)]
 pub struct TraceViewer {
     store: TraceStore,
@@ -34,6 +81,18 @@ pub struct TraceViewer {
 
 impl TraceViewer {
     /// Create a viewer for the given store.
+    ///
+    /// New viewers follow the tail, show all retained events, use compact default
+    /// formatting, and have no selected event.
+    ///
+    /// ```
+    /// use tui_tracing::{TraceStore, TraceViewer};
+    ///
+    /// let store = TraceStore::default();
+    /// let viewer = TraceViewer::new(store);
+    ///
+    /// assert_eq!(viewer.status().visible_events, 0);
+    /// ```
     pub fn new(store: TraceStore) -> Self {
         Self {
             store,
@@ -58,6 +117,9 @@ impl TraceViewer {
     }
 
     /// Replace the display-time filter.
+    ///
+    /// This does not change retained records. If the current selection is no
+    /// longer visible through the new filter, selection is cleared.
     pub fn set_filter(&mut self, filter: TraceFilter) {
         self.filter = filter;
         self.clamp_selection();
@@ -74,6 +136,9 @@ impl TraceViewer {
     }
 
     /// Return the selected retained event if it is still visible.
+    ///
+    /// The returned event is cloned from a fresh store snapshot. It may be stale
+    /// immediately if capture continues concurrently.
     pub fn selected_event(&self) -> Option<EventRecord> {
         let snapshot = self.store.snapshot();
         self.selected_event_for_snapshot(&snapshot).cloned()
@@ -92,12 +157,16 @@ impl TraceViewer {
     }
 
     /// Select the first visible event if there is one.
+    ///
+    /// "First" means oldest in the filtered event stream.
     pub fn select_first(&mut self) {
         let snapshot = self.store.snapshot();
         self.selected_event_id = self.visible_events(&snapshot).first().map(|event| event.id);
     }
 
     /// Select the last visible event if there is one.
+    ///
+    /// "Last" means newest in the filtered event stream.
     pub fn select_last(&mut self) {
         let snapshot = self.store.snapshot();
         self.selected_event_id = self.visible_events(&snapshot).last().map(|event| event.id);
@@ -133,6 +202,9 @@ impl TraceViewer {
     }
 
     /// Replace the formatting options.
+    ///
+    /// Formatting options affect compact event rows only. They do not change
+    /// capture, filtering, selection, or selected-event detail content.
     pub fn set_format_options(&mut self, format: FormatOptions) {
         self.format = format;
     }
@@ -196,6 +268,9 @@ impl TraceViewer {
     }
 
     /// Scroll older by `lines`.
+    ///
+    /// Calling this leaves follow-tail mode. The final scroll offset is clamped
+    /// during the next render, when the viewer knows the current viewport height.
     pub fn scroll_up(&mut self, lines: u16) {
         if self.follow_tail {
             self.scroll_top = self.last_tail_scroll;
@@ -205,6 +280,9 @@ impl TraceViewer {
     }
 
     /// Scroll newer by `lines`, returning to follow mode at the bottom.
+    ///
+    /// The bottom is based on the most recently rendered viewport. If no render
+    /// has happened yet, the stored tail offset is zero.
     pub fn scroll_down(&mut self, lines: u16) {
         let next_scroll = self.scroll_top.saturating_add(lines);
         if next_scroll >= self.last_tail_scroll {
@@ -402,6 +480,31 @@ impl Widget for &mut TraceViewer {
 /// A detail value is an owned snapshot of the selected event and its span stack.
 /// It is separate from compact row rendering so applications can choose whether to
 /// show details in a bottom pane, side pane, popup, or another app-owned surface.
+///
+/// `TraceEventDetail` is independent from the store after construction. Rendering
+/// it does not mutate viewer state.
+///
+/// ```
+/// use tracing::subscriber;
+/// use tracing_subscriber::Registry;
+/// use tracing_subscriber::layer::SubscriberExt;
+/// use tui_tracing::{TraceLayer, TraceViewer};
+///
+/// let (layer, store) = TraceLayer::new();
+/// let subscriber = Registry::default().with(layer);
+///
+/// subscriber::with_default(subscriber, || {
+///     tracing::warn!(code = 503, "retrying request");
+/// });
+///
+/// let mut viewer = TraceViewer::new(store);
+/// viewer.select_first();
+///
+/// let detail = viewer.selected_detail().expect("selected event has detail");
+/// let text = detail.text().to_string();
+/// assert!(text.contains("retrying request"));
+/// assert!(text.contains("code"));
+/// ```
 #[derive(Clone, Debug)]
 pub struct TraceEventDetail {
     event: EventRecord,
@@ -410,6 +513,9 @@ pub struct TraceEventDetail {
 
 impl TraceEventDetail {
     /// Create event detail from an event and already-resolved span stack.
+    ///
+    /// Most applications should call [`TraceViewer::selected_detail`] instead so
+    /// the span stack is resolved from one store snapshot.
     pub fn new(event: EventRecord, span_stack: Vec<TraceSpanDetail>) -> Self {
         Self { event, span_stack }
     }
@@ -440,7 +546,7 @@ impl TraceEventDetail {
         Self::new(event.clone(), span_stack)
     }
 
-    /// Format this detail as Ratatui text.
+    /// Format this detail as [`ratatui::text::Text`].
     ///
     /// This is useful when callers need app-owned chrome or scrolling around the
     /// library's detail content. Rendering `&TraceEventDetail` directly uses the
@@ -480,6 +586,10 @@ impl Widget for &TraceEventDetail {
 ///
 /// A span detail always keeps the referenced span id. The full span record is
 /// present when it was retained in the same snapshot as the event.
+///
+/// Missing span records are expected when a detail is synthesized by an
+/// application or when future retention policies keep events without the full span
+/// metadata they reference.
 #[derive(Clone, Debug)]
 pub struct TraceSpanDetail {
     id: SpanId,
@@ -805,9 +915,15 @@ pub enum TraceScrollMode {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceViewStatus {
     /// Current scroll behavior.
+    ///
+    /// Applications can show this directly in a status bar or use it to decide
+    /// whether new events should be visually emphasized.
     pub scroll_mode: TraceScrollMode,
 
     /// First visible row offset from the top of the filtered event stream.
+    ///
+    /// This is updated during rendering and is measured in rendered rows, not
+    /// event ids.
     pub scroll_top: u16,
 
     /// Last computed tail offset for the filtered event stream.
@@ -817,18 +933,30 @@ pub struct TraceViewStatus {
     pub tail_scroll: u16,
 
     /// Number of retained events accepted by the active display filter.
+    ///
+    /// This is computed from a fresh store snapshot when status is requested.
     pub visible_events: usize,
 
     /// Number of retained events hidden by the active display filter.
+    ///
+    /// This does not include events evicted or dropped by store retention.
     pub hidden_events: usize,
 
     /// Selected event position in the filtered visible event stream.
+    ///
+    /// The value is zero-based. `None` means no selected event is currently
+    /// visible.
     pub selected_visible_index: Option<usize>,
 
     /// Selected event identifier, if the selected event is still visible.
+    ///
+    /// This can be `None` even when the viewer has visible events.
     pub selected_event_id: Option<EventId>,
 
     /// Active display filter.
+    ///
+    /// This clone lets applications show filter state without borrowing the
+    /// viewer.
     pub filter: TraceFilter,
 
     /// Storage status for retained records and storage-level event loss.

@@ -2,14 +2,51 @@
 //!
 //! Capture-time filters decide what reaches [`crate::TraceStore`]. Display filters
 //! decide what a viewer shows from the retained records at render time.
+//!
+//! # Common Workflow
+//!
+//! Build a [`TraceFilter`] with the `with_*` methods, then pass it to
+//! [`crate::TraceViewer::set_filter`]. The filter changes which retained events are
+//! visible without changing store contents or storage counters.
+//!
+//! # Related Modules
+//!
+//! - [`crate::layer`] and [`tracing_subscriber`] filters own capture-time filtering.
+//! - [`crate::store`] retains records before display-time filtering.
+//! - [`crate::viewer`] owns the active filter for an on-screen view.
 
 use crate::record::{EventRecord, Level, SpanRecord};
 use crate::store::TraceSnapshot;
 
 /// Display-time event filter.
 ///
-/// Filters are intentionally independent from `tracing_subscriber` filters. They do
+/// Filters are intentionally independent from [`tracing_subscriber`] filters. They do
 /// not affect capture, and changing them never loses retained events.
+///
+/// Matching is substring-based for targets, text, span names, and field values.
+/// Level matching keeps events whose level is at least as severe as the configured
+/// minimum according to [`tracing`] level ordering.
+///
+/// ```
+/// use tracing::subscriber;
+/// use tracing_subscriber::{layer::SubscriberExt, Registry};
+/// use tui_tracing::{TraceFilter, TraceLayer, TraceViewer};
+///
+/// let (layer, store) = TraceLayer::new();
+/// let subscriber = Registry::default().with(layer);
+///
+/// subscriber::with_default(subscriber, || {
+///     tracing::debug!(target: "app::cache", "warming cache");
+///     tracing::warn!(target: "app::network", status = 503, "retrying request");
+/// });
+///
+/// let mut viewer = TraceViewer::new(store);
+/// viewer.set_filter(TraceFilter::all().with_min_level(tracing::Level::INFO));
+///
+/// let status = viewer.status();
+/// assert_eq!(status.visible_events, 1);
+/// assert_eq!(status.hidden_events, 1);
+/// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TraceFilter {
     min_level: Option<Level>,
@@ -26,6 +63,9 @@ impl TraceFilter {
     }
 
     /// Set the minimum visible level.
+    ///
+    /// For example, `INFO` shows `INFO`, `WARN`, and `ERROR`, but hides `DEBUG`
+    /// and `TRACE`.
     pub fn with_min_level(mut self, level: tracing::Level) -> Self {
         self.min_level = Some(level.into());
         self
@@ -38,12 +78,17 @@ impl TraceFilter {
     }
 
     /// Restrict visible events to records containing `text`.
+    ///
+    /// Text matching searches event targets, event field names and values, span
+    /// names, span targets, and span field names and values.
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
         self
     }
 
     /// Restrict visible events to records with a field containing `value`.
+    ///
+    /// The field name must match exactly. The field value is matched as text.
     pub fn with_field(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.field = Some(FieldFilter {
             name: name.into(),
@@ -59,6 +104,10 @@ impl TraceFilter {
     }
 
     /// Return true when an event should be shown for the snapshot.
+    ///
+    /// This method is public so applications can reuse the same display-time
+    /// matching policy for custom views. It does not mutate the filter, event, or
+    /// snapshot.
     pub fn matches_event(&self, event: &EventRecord, snapshot: &TraceSnapshot) -> bool {
         self.matches_level(event)
             && self.matches_target(event)

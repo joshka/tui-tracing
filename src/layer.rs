@@ -1,9 +1,27 @@
-//! `tracing-subscriber` capture layer.
+//! [`tracing_subscriber`] capture layer.
 //!
 //! [`TraceLayer`] records tracing spans and events into [`crate::TraceStore`]. It
 //! intentionally does not decide what the TUI shows. Applications can combine it
-//! with ordinary `tracing_subscriber` capture filters and then apply
+//! with ordinary [`tracing_subscriber`] capture filters and then apply
 //! [`crate::TraceFilter`] at display time.
+//!
+//! # Common Workflow
+//!
+//! Call [`TraceLayer::new`] to create a layer and matching store, install the layer
+//! in a [`tracing_subscriber`] registry, keep the store in application state, and
+//! render it with [`crate::TraceViewer`].
+//!
+//! # Lifecycle And Side Effects
+//!
+//! `TraceLayer` has no background task and no drop-time cleanup. Its side effect is
+//! writing captured records into its [`crate::TraceStore`] while it is installed in
+//! the active subscriber. Installing the subscriber is an application responsibility.
+//!
+//! # Related Modules
+//!
+//! - [`crate::store`] owns the retained records written by this layer.
+//! - [`crate::viewer`] renders a store in [`ratatui`].
+//! - [`crate::filter`] applies display-time filters after capture.
 
 use tracing::{Subscriber, span};
 use tracing_subscriber::Layer;
@@ -16,6 +34,10 @@ use crate::record::{SpanId, SpanRecord};
 use crate::store::TraceStore;
 
 /// Subscriber layer that captures structured tracing records for a TUI.
+///
+/// `TraceLayer` implements [`tracing_subscriber::Layer`] and records spans and
+/// events into a [`TraceStore`]. It is cheap to construct around an existing store
+/// and does not perform I/O, spawn work, or install itself globally.
 #[derive(Debug, Default)]
 pub struct TraceLayer {
     store: TraceStore,
@@ -24,14 +46,34 @@ pub struct TraceLayer {
 impl TraceLayer {
     /// Create a layer and the store it writes into.
     ///
-    /// Install the layer in a `tracing_subscriber` registry and keep the returned
+    /// Install the layer in a [`tracing_subscriber`] registry and keep the returned
     /// store in application state for rendering.
+    ///
+    /// ```
+    /// use tracing::subscriber;
+    /// use tracing_subscriber::Registry;
+    /// use tracing_subscriber::layer::SubscriberExt;
+    /// use tui_tracing::{TraceLayer, TraceViewer};
+    ///
+    /// let (layer, store) = TraceLayer::new();
+    /// let subscriber = Registry::default().with(layer);
+    ///
+    /// subscriber::with_default(subscriber, || {
+    ///     tracing::info!("captured by TraceLayer");
+    /// });
+    ///
+    /// let mut viewer = TraceViewer::new(store);
+    /// assert_eq!(viewer.status().visible_events, 1);
+    /// ```
     pub fn new() -> (Self, TraceStore) {
         let store = TraceStore::default();
         (Self::from_store(store.clone()), store)
     }
 
     /// Create a layer that writes into an existing store.
+    ///
+    /// Use this when the application wants to choose store capacity with
+    /// [`TraceStore::with_capacity`] or share the same store across setup code.
     pub fn from_store(store: TraceStore) -> Self {
         Self { store }
     }

@@ -1,15 +1,13 @@
 # Design And Quality Standards
 
-This document is durable guidance for `tui-tracing`. It is the source of truth for the
-maintenance posture expected from implementation, documentation, tests, and automation.
+Durable guidance for `tui-tracing` defines the maintenance posture expected from implementation,
+documentation, tests, and automation.
 
 ## Library Goal
 
-Build this as a production-quality Rust library, optimized for long-term maintenance, reader
-clarity, and idiomatic public API design.
-
-The goal is not just to make the code work. The goal is to make the crate easy to understand,
-easy to audit, easy to extend, and hard to misuse.
+Build `tui-tracing` as a production-quality Rust library, optimized for long-term maintenance,
+reader clarity, and idiomatic public API design. Working code is not enough; the crate should be
+easy to understand, audit, extend, and use correctly.
 
 ## General Standards
 
@@ -38,7 +36,7 @@ easy to audit, easy to extend, and hard to misuse.
   responsibility.
 - Use `From`, `TryFrom`, `Default`, `Display`, and common derives where they make value types
   easier and safer to use without weakening invariants.
-- Public error enums should usually be `#[non_exhaustive]` unless exhaustive matching is
+- Public error enums should default to `#[non_exhaustive]` unless exhaustive matching is
   intentional.
 - Avoid giant crate roots. The root should teach the crate, expose the primary path, and point to
   deeper modules.
@@ -57,20 +55,34 @@ easy to audit, easy to extend, and hard to misuse.
 ## Documentation Standards
 
 - Treat rustdoc as part of the API, not decoration.
-- Each public module should answer what concept it owns, when to use it, what to read next, and
+- The crate root should route new users with a purpose statement, first example, primary public
+  entry points, module map, feature flags, examples, and lifecycle notes.
+- Every public module should answer what concept it owns, the main workflow, related modules, and
   what it intentionally does not own.
-- Provide guide-level docs as well as reference docs: tutorials for first success, how-tos for
-  common tasks, explanations for core concepts, and reference docs for exact API behavior.
-- Write docs for non-linear readers. Someone may land on any module, type, example, or guide
-  first.
-- Make start-here paths obvious.
-- Distinguish user docs, maintainer docs, design notes, release checklists, and historical review
-  docs.
-- Cross-link docs directionally: start here, source of truth, read next, and related lower-level
-  detail.
+- Every public type should explain what it represents, who should construct it, what invariants it
+  preserves, lifecycle or ownership behavior, concurrency expectations where relevant, and how it
+  relates to neighboring types.
+- Every public field should document meaning, valid values or invariants, default behavior, and
+  interactions with other fields.
+- Every public function should document caller-facing behavior, state changes, side effects, and
+  allocation, blocking, I/O, global registration, or background work when relevant.
+- Fallible APIs should explain what can fail, whether retrying is useful, whether partial state may
+  have changed, and how callers recover.
+- APIs that change process-wide, runtime-wide, global, UI, subscriber, terminal, file, network, or
+  background-task state must document ownership, startup, shutdown, cleanup, drop behavior, and
+  whether multiple instances may coexist.
+- Async or concurrent APIs should document runtime assumptions, cancellation, backpressure,
+  capacity, ordering, cloneability, and producer/consumer lifetime behavior.
+- Feature-gated APIs should document the feature name, why it exists, what it enables, and whether
+  it changes public API, runtime behavior, dependencies, examples, or platform support.
+- Write docs for non-linear readers. Someone may land on any module, type, example, or guide first.
+- Cross-link docs to owning modules, related types, runnable examples, tests, and lower-level
+  details where those links improve auditability.
 - Examples should show practical use, not just construction.
 - Prefer simple, obvious examples over elaborate mini-frameworks.
 - Use realistic examples that teach ownership, lifecycle, errors, or integration shape.
+- Markdown docs should be reserved for material that does not fit in rustdoc or README: quality
+  standards, release procedure, design tradeoffs, and maintainer workflows.
 
 ## Testing Standards
 
