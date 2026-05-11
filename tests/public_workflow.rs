@@ -570,6 +570,66 @@ fn viewer_selection_uses_filtered_visible_rows() {
 }
 
 #[test]
+fn viewer_can_reveal_selection_below_viewport() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..7 {
+            tracing::info!("event-{index}");
+        }
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    render_viewer(&mut viewer, 100, 3);
+    viewer.jump_to_oldest();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1", "event-2"]
+    );
+
+    for _ in 0..5 {
+        viewer.select_next();
+    }
+    viewer.reveal_selection();
+
+    let status = viewer.status();
+    assert_eq!(status.scroll_mode, TraceScrollMode::Scrollback);
+    assert_eq!(status.selected_visible_index, Some(4));
+    assert_eq!(status.scroll_top, 2);
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-2", "event-3", "event-4"]
+    );
+}
+
+#[test]
+fn viewer_can_reveal_selection_above_viewport() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..7 {
+            tracing::info!("event-{index}");
+        }
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    render_viewer(&mut viewer, 100, 3);
+    viewer.select_first();
+    viewer.reveal_selection();
+
+    let status = viewer.status();
+    assert_eq!(status.scroll_mode, TraceScrollMode::Scrollback);
+    assert_eq!(status.selected_visible_index, Some(0));
+    assert_eq!(status.scroll_top, 0);
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1", "event-2"]
+    );
+}
+
+#[test]
 fn viewer_selection_is_stable_when_new_events_arrive() {
     let store = TraceStore::default();
     let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
