@@ -2,6 +2,8 @@
 
 `tui-tracing` is a native `tracing` viewer for Ratatui applications.
 
+![tui-tracing demo](https://github.com/joshka/tui-tracing/releases/latest/download/tui-tracing-demo.gif)
+
 It is inspired by `tui-logger`, but it does not treat tracing as log compatibility glue. The
 crate captures spans, events, fields, timing, and span context directly from `tracing-subscriber`
 so a running TUI can inspect more information than it currently displays.
