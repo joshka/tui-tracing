@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use quanta::Instant;
-use tracing::{
-    span::{self, Attributes},
-    Subscriber,
-};
-use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
+use tracing::span::{self, Attributes};
+use tracing::Subscriber;
+use tracing_subscriber::layer::Context;
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::Layer;
 
 /// A layer that tracks the time spent in each span.
 ///
@@ -58,9 +58,9 @@ where
 {
     /// Records that a new span has been created.
     fn on_new_span(&self, _attrs: &Attributes<'_>, id: &span::Id, ctx: Context<'_, C>) {
-        let span = ctx.span(id).expect("span not found");
-        let mut extensions = span.extensions_mut();
-        extensions.insert(Timing::new());
+        if let Some(span) = ctx.span(id) {
+            span.extensions_mut().insert(Timing::new());
+        }
     }
 
     /// Records that a span has been entered.
@@ -68,20 +68,26 @@ where
     /// The subscriber records the time spent in the span as "idle" time, as the span is not
     /// executing.
     fn on_enter(&self, id: &span::Id, ctx: Context<'_, C>) {
-        let span = ctx.span(id).expect("span not found");
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
         let mut extensions = span.extensions_mut();
-        let timings = extensions.get_mut::<Timing>().expect("timings not found");
-        timings.enter();
+        if let Some(timing) = extensions.get_mut::<Timing>() {
+            timing.enter();
+        }
     }
 
     /// Records that a span has been exited.
     ///
     /// The subscriber records the time spent in the span as "busy" time, as the span is executing.
     fn on_exit(&self, id: &span::Id, ctx: Context<'_, C>) {
-        let span = ctx.span(id).expect("span not found");
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
         let mut extensions = span.extensions_mut();
-        let timings = extensions.get_mut::<Timing>().expect("timings not found");
-        timings.exit();
+        if let Some(timing) = extensions.get_mut::<Timing>() {
+            timing.exit();
+        }
     }
 
     /// Records that a span has been closed.
@@ -89,10 +95,13 @@ where
     /// The subscriber records the time spent in the span as either "idle" time or "busy" time, as
     /// the span is not executing.
     fn on_close(&self, id: span::Id, ctx: Context<'_, C>) {
-        let span = ctx.span(&id).expect("span not found");
+        let Some(span) = ctx.span(&id) else {
+            return;
+        };
         let mut extensions = span.extensions_mut();
-        let timings = extensions.get_mut::<Timing>().expect("timings not found");
-        timings.close();
+        if let Some(timing) = extensions.get_mut::<Timing>() {
+            timing.close();
+        }
     }
 }
 
