@@ -84,12 +84,18 @@ state, the active filter, and the underlying `TraceStoreStatus`.
 Selection is tracked by retained event id and interpreted through the active display filter.
 Applications can move selection with `select_next`, `select_previous`, `select_first`, and
 `select_last`, then read `selected_event` or `TraceViewer::status()` for app-owned detail views.
+For rendering full selected-event context, call `selected_detail()` and render the returned
+`TraceEventDetail` into a caller-owned pane. Compact row rendering remains fmt-like and optimized
+for scanning; detail rendering is where full fields, source location, and span-stack context live.
+`TraceEventDetail::text()` exposes the formatted detail text for applications that need their own
+scroll state, borders, titles, or layout chrome around the detail pane.
 
 ## Current Public Path
 
 - `TraceLayer`: subscriber layer for capture.
 - `TraceStore`: shared runtime buffer of retained records and storage counters.
 - `TraceViewer`: Ratatui event-stream viewer.
+- `TraceEventDetail`: renderable selected-event detail.
 - `TraceFilter`: display-time event filter.
 - `TimingLayer`: optional span busy/idle timing layer.
 

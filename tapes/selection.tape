@@ -4,7 +4,7 @@ Require cargo
 Require vhs
 
 Set Width 1200
-Set Height 760
+Set Height 1024
 Set Theme "Aardvark Blue"
 
 Hide
@@ -26,7 +26,11 @@ Sleep 1s
 Escape
 Sleep 1s
 Type "j"
-Sleep 4s
+Sleep 2s
+Type "]"
+Sleep 1s
+Type "]"
+Sleep 3s
 Hide
 Type "q"
 Wait

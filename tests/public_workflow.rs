@@ -3,7 +3,10 @@ use ratatui::Terminal;
 use tracing::subscriber;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
-use tui_tracing::{FieldValue, TraceFilter, TraceLayer, TraceScrollMode, TraceStore, TraceViewer};
+use tui_tracing::{
+    EventRecord, FieldMap, FieldValue, Level, TraceEventDetail, TraceFilter, TraceLayer,
+    TraceScrollMode, TraceSpanDetail, TraceStore, TraceViewer,
+};
 
 #[test]
 fn store_status_tracks_empty_capacity_as_dropped_events() {
@@ -403,6 +406,100 @@ fn viewer_selection_clears_when_retention_evicts_selected_event() {
 }
 
 #[test]
+fn selected_detail_renders_event_fields_span_fields_and_source_location() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        let span = tracing::info_span!("request", user = "alice", route = "/checkout");
+        let _guard = span.enter();
+        tracing::warn!(answer = 42, "payment declined");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    viewer.select_first();
+
+    let rendered = render_detail(
+        &viewer
+            .selected_detail()
+            .expect("selected visible event has renderable detail"),
+        120,
+        24,
+    );
+
+    assert!(rendered.contains("Event"));
+    assert!(rendered.contains("level: WARN"));
+    assert!(rendered.contains("target: public_workflow"));
+    assert!(rendered.contains("location: tests/public_workflow.rs:"));
+    assert!(rendered.contains("message: payment declined"));
+    assert!(rendered.contains("answer: 42"));
+    assert!(rendered.contains("Span stack"));
+    assert!(rendered.contains("0. request"));
+    assert!(rendered.contains("user: alice"));
+    assert!(rendered.contains("route: /checkout"));
+    assert!(rendered.contains("lifecycle: closed"));
+}
+
+#[test]
+fn selected_detail_renders_field_only_events() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!(answer = 42, ready = true);
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    viewer.select_first();
+
+    let rendered = render_detail(
+        &viewer
+            .selected_detail()
+            .expect("field-only selected event has detail"),
+        100,
+        14,
+    );
+
+    assert!(rendered.contains("message: <none>"));
+    assert!(rendered.contains("answer: 42"));
+    assert!(rendered.contains("ready: true"));
+    assert!(rendered.contains("Span stack"));
+    assert!(rendered.contains("<none>"));
+}
+
+#[test]
+fn event_detail_renders_missing_source_location_and_missing_span_records() {
+    let mut fields = FieldMap::default();
+    fields.insert(
+        "message".to_owned(),
+        FieldValue::Debug("synthetic".to_owned()),
+    );
+    fields.insert("code".to_owned(), FieldValue::U64(503));
+
+    let event = EventRecord {
+        id: 7,
+        timestamp: chrono::Local::now(),
+        level: Level(tracing::Level::ERROR),
+        target: "synthetic::target".to_owned(),
+        module_path: None,
+        file: None,
+        line: None,
+        fields,
+        span_id: Some(99),
+        span_stack: vec![99],
+    };
+    let detail = TraceEventDetail::new(event, vec![TraceSpanDetail::missing(99)]);
+
+    let rendered = render_detail(&detail, 100, 16);
+
+    assert!(rendered.contains("module: <unknown>"));
+    assert!(rendered.contains("location: <unknown>"));
+    assert!(rendered.contains("message: synthetic"));
+    assert!(rendered.contains("code: 503"));
+    assert!(rendered.contains("<missing span 99>"));
+}
+
+#[test]
 fn viewer_follows_tail_by_default() {
     let store = TraceStore::default();
     let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
@@ -655,6 +752,15 @@ fn render_viewer_event_rows(viewer: &mut TraceViewer, width: u16, height: u16) -
         .into_iter()
         .filter_map(|row| event_label(&row))
         .collect()
+}
+
+fn render_detail(detail: &TraceEventDetail, width: u16, height: u16) -> String {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| frame.render_widget(detail, frame.area()))
+        .unwrap();
+    buffer_rows(terminal.backend().buffer()).join("\n")
 }
 
 fn buffer_rows(buffer: &ratatui::buffer::Buffer) -> Vec<String> {

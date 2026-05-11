@@ -4,7 +4,7 @@ Require cargo
 Require vhs
 
 Set Width 1200
-Set Height 760
+Set Height 1024
 Set TypingSpeed 25ms
 Set Theme "Aardvark Blue"
 
@@ -27,6 +27,10 @@ Sleep 1s
 Escape
 Sleep 1s
 Type "j"
+Sleep 2s
+Type "]"
+Sleep 1s
+Type "]"
 Sleep 2s
 Type "d"
 Sleep 3s
