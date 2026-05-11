@@ -2,7 +2,7 @@ use std::fs::File;
 use std::time::Duration;
 
 use color_eyre::Result;
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::{Event, KeyCode, KeyEvent};
 use futures::StreamExt;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -105,28 +105,17 @@ impl App {
             return Ok(());
         };
 
-        match event? {
-            Event::Key(event) if event.code == KeyCode::Char('q') => {
-                self.cancellation_token.cancel();
-            }
-            Event::Key(event) if event.code == KeyCode::Char('d') => {
-                self.cycle_level();
-            }
-            Event::Key(event) if event.code == KeyCode::Up => {
-                self.viewer.scroll_up(1);
-            }
-            Event::Key(event) if event.code == KeyCode::Down => {
-                self.viewer.scroll_down(1);
-            }
-            Event::Key(event) if event.code == KeyCode::End => {
-                self.viewer.follow_tail();
-            }
-            Event::Key(event) => {
-                debug!(?event, "ignored key");
-            }
-            event => {
-                trace!(?event, "ignored terminal event");
-            }
+        let event = event?;
+        match action_for_event(&event) {
+            Some(Action::Quit) => self.cancellation_token.cancel(),
+            Some(Action::CycleLevel) => self.cycle_level(),
+            Some(Action::SelectNext) => self.viewer.select_next(),
+            Some(Action::SelectPrevious) => self.viewer.select_previous(),
+            Some(Action::ClearSelection) => self.viewer.clear_selection(),
+            Some(Action::ScrollUp(lines)) => self.viewer.scroll_up(lines),
+            Some(Action::ScrollDown(lines)) => self.viewer.scroll_down(lines),
+            Some(Action::FollowTail) => self.viewer.follow_tail(),
+            None => log_ignored_event(event),
         }
 
         Ok(())
@@ -146,14 +135,58 @@ impl App {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Action {
+    Quit,
+    CycleLevel,
+    SelectNext,
+    SelectPrevious,
+    ClearSelection,
+    ScrollUp(u16),
+    ScrollDown(u16),
+    FollowTail,
+}
+
+fn action_for_event(event: &Event) -> Option<Action> {
+    let Event::Key(KeyEvent { code, .. }) = event else {
+        return None;
+    };
+
+    match code {
+        KeyCode::Char('q') => Some(Action::Quit),
+        KeyCode::Char('l') => Some(Action::CycleLevel),
+        KeyCode::Char('j') => Some(Action::SelectNext),
+        KeyCode::Char('k') => Some(Action::SelectPrevious),
+        KeyCode::Esc => Some(Action::ClearSelection),
+        KeyCode::Char('u') | KeyCode::Up => Some(Action::ScrollUp(1)),
+        KeyCode::Char('d') | KeyCode::Down => Some(Action::ScrollDown(1)),
+        KeyCode::Char('b') | KeyCode::PageUp => Some(Action::ScrollUp(10)),
+        KeyCode::Char('f') | KeyCode::PageDown => Some(Action::ScrollDown(10)),
+        KeyCode::Char('g') | KeyCode::Home => Some(Action::ScrollUp(u16::MAX)),
+        KeyCode::Char('G') | KeyCode::End => Some(Action::FollowTail),
+        _ => None,
+    }
+}
+
+fn log_ignored_event(event: Event) {
+    match event {
+        Event::Key(event) => debug!(?event, "ignored key"),
+        event => trace!(?event, "ignored terminal event"),
+    }
+}
+
 fn demo_status(min_level: Level, status: TraceViewStatus) -> Line<'static> {
     let mode = match status.scroll_mode {
         TraceScrollMode::FollowTail => "tail",
         TraceScrollMode::Scrollback => "scrollback",
     };
+    let selected = status
+        .selected_visible_index
+        .map(|index| format!("selected {}/{}", index + 1, status.visible_events))
+        .unwrap_or_else(|| "selected none".to_owned());
 
     Line::from(format!(
-        "q quit | d level {min_level}+ | Up/Down scroll | End follow tail | {mode} | visible {}/{} | lost {}",
+        "q quit | l level {min_level}+ | j/k select | Esc clear | Up/Down or u/d scroll | PgUp/PgDn or b/f page | g/G jump | {mode} | {selected} | visible {}/{} | lost {}",
         status.visible_events,
         status.store.retained_events,
         status.store.lost_events()

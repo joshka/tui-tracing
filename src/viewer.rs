@@ -6,11 +6,13 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::Text;
 use ratatui::widgets::{Paragraph, Widget};
 
 use crate::filter::TraceFilter;
 use crate::format::{event_line, FormatOptions};
+use crate::record::{EventId, EventRecord};
 use crate::store::{TraceSnapshot, TraceStore, TraceStoreStatus};
 
 /// Event-stream trace viewer for Ratatui applications.
@@ -25,6 +27,7 @@ pub struct TraceViewer {
     follow_tail: bool,
     scroll_top: u16,
     last_tail_scroll: u16,
+    selected_event_id: Option<EventId>,
 }
 
 impl TraceViewer {
@@ -37,6 +40,7 @@ impl TraceViewer {
             follow_tail: true,
             scroll_top: 0,
             last_tail_scroll: 0,
+            selected_event_id: None,
         }
     }
 
@@ -53,6 +57,7 @@ impl TraceViewer {
     /// Replace the display-time filter.
     pub fn set_filter(&mut self, filter: TraceFilter) {
         self.filter = filter;
+        self.clamp_selection();
     }
 
     /// Return structured status data for app-owned status bars.
@@ -63,6 +68,48 @@ impl TraceViewer {
     pub fn status(&self) -> TraceViewStatus {
         let snapshot = self.store.snapshot();
         self.status_for_snapshot(&snapshot)
+    }
+
+    /// Return the selected retained event if it is still visible.
+    pub fn selected_event(&self) -> Option<EventRecord> {
+        let snapshot = self.store.snapshot();
+        self.selected_event_for_snapshot(&snapshot).cloned()
+    }
+
+    /// Select the first visible event if there is one.
+    pub fn select_first(&mut self) {
+        let snapshot = self.store.snapshot();
+        self.selected_event_id = self.visible_events(&snapshot).first().map(|event| event.id);
+    }
+
+    /// Select the last visible event if there is one.
+    pub fn select_last(&mut self) {
+        let snapshot = self.store.snapshot();
+        self.selected_event_id = self.visible_events(&snapshot).last().map(|event| event.id);
+    }
+
+    /// Move selection toward newer visible events.
+    ///
+    /// If no event is selected, this selects the first visible event.
+    pub fn select_next(&mut self) {
+        let snapshot = self.store.snapshot();
+        let visible_events = self.visible_events(&snapshot);
+        self.selected_event_id = next_selected_event_id(&visible_events, self.selected_event_id);
+    }
+
+    /// Move selection toward older visible events.
+    ///
+    /// If no event is selected, this selects the last visible event.
+    pub fn select_previous(&mut self) {
+        let snapshot = self.store.snapshot();
+        let visible_events = self.visible_events(&snapshot);
+        self.selected_event_id =
+            previous_selected_event_id(&visible_events, self.selected_event_id);
+    }
+
+    /// Clear the selected event.
+    pub fn clear_selection(&mut self) {
+        self.selected_event_id = None;
     }
 
     /// Return the active formatting options.
@@ -102,24 +149,62 @@ impl TraceViewer {
     }
 
     fn visible_text(&self, snapshot: &TraceSnapshot) -> Text<'static> {
-        snapshot
-            .events
-            .iter()
-            .filter(|event| self.filter.matches_event(event, snapshot))
-            .map(|event| event_line(event, snapshot, &self.format))
+        let selected_event_id = self.selected_event_id;
+        self.visible_events(snapshot)
+            .into_iter()
+            .map(|event| {
+                let line = event_line(event, snapshot, &self.format);
+                if Some(event.id) == selected_event_id {
+                    line.style(Style::default().add_modifier(Modifier::REVERSED))
+                } else {
+                    line
+                }
+            })
             .collect()
     }
 
     fn visible_event_count(&self, snapshot: &TraceSnapshot) -> usize {
+        self.visible_events(snapshot).len()
+    }
+
+    fn visible_events<'snapshot>(
+        &self,
+        snapshot: &'snapshot TraceSnapshot,
+    ) -> Vec<&'snapshot EventRecord> {
         snapshot
             .events
             .iter()
             .filter(|event| self.filter.matches_event(event, snapshot))
-            .count()
+            .collect()
+    }
+
+    fn selected_event_for_snapshot<'snapshot>(
+        &self,
+        snapshot: &'snapshot TraceSnapshot,
+    ) -> Option<&'snapshot EventRecord> {
+        let selected_event_id = self.selected_event_id?;
+        self.visible_events(snapshot)
+            .into_iter()
+            .find(|event| event.id == selected_event_id)
+    }
+
+    fn selected_visible_index(&self, snapshot: &TraceSnapshot) -> Option<usize> {
+        let selected_event_id = self.selected_event_id?;
+        self.visible_events(snapshot)
+            .into_iter()
+            .position(|event| event.id == selected_event_id)
+    }
+
+    fn clamp_selection(&mut self) {
+        if self.selected_event().is_none() {
+            self.selected_event_id = None;
+        }
     }
 
     fn status_for_snapshot(&self, snapshot: &TraceSnapshot) -> TraceViewStatus {
         let visible_events = self.visible_event_count(snapshot);
+        let selected_visible_index = self.selected_visible_index(snapshot);
+        let selected_event_id = selected_visible_index.and(self.selected_event_id);
         TraceViewStatus {
             scroll_mode: if self.follow_tail {
                 TraceScrollMode::FollowTail
@@ -133,6 +218,8 @@ impl TraceViewer {
                 .status
                 .retained_events
                 .saturating_sub(visible_events),
+            selected_visible_index,
+            selected_event_id,
             filter: self.filter.clone(),
             store: snapshot.status,
         }
@@ -152,6 +239,50 @@ impl TraceViewer {
             self.scroll_top
         }
     }
+}
+
+fn next_selected_event_id(
+    visible_events: &[&EventRecord],
+    selected_event_id: Option<EventId>,
+) -> Option<EventId> {
+    if visible_events.is_empty() {
+        return None;
+    }
+
+    let Some(selected_event_id) = selected_event_id else {
+        return Some(visible_events[0].id);
+    };
+
+    let Some(selected_index) = visible_events
+        .iter()
+        .position(|event| event.id == selected_event_id)
+    else {
+        return visible_events.first().map(|event| event.id);
+    };
+    let next_index = (selected_index + 1).min(visible_events.len() - 1);
+    Some(visible_events[next_index].id)
+}
+
+fn previous_selected_event_id(
+    visible_events: &[&EventRecord],
+    selected_event_id: Option<EventId>,
+) -> Option<EventId> {
+    if visible_events.is_empty() {
+        return None;
+    }
+
+    let Some(selected_event_id) = selected_event_id else {
+        return visible_events.last().map(|event| event.id);
+    };
+
+    let Some(selected_index) = visible_events
+        .iter()
+        .position(|event| event.id == selected_event_id)
+    else {
+        return visible_events.last().map(|event| event.id);
+    };
+    let previous_index = selected_index.saturating_sub(1);
+    Some(visible_events[previous_index].id)
 }
 
 impl Widget for &mut TraceViewer {
@@ -198,6 +329,12 @@ pub struct TraceViewStatus {
 
     /// Number of retained events hidden by the active display filter.
     pub hidden_events: usize,
+
+    /// Selected event position in the filtered visible event stream.
+    pub selected_visible_index: Option<usize>,
+
+    /// Selected event identifier, if the selected event is still visible.
+    pub selected_event_id: Option<EventId>,
 
     /// Active display filter.
     pub filter: TraceFilter,

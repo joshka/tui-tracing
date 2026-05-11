@@ -1,11 +1,10 @@
-Output target/vhs/tui-tracing-demo.gif
+Output target/vhs/tui-tracing-selection.gif
 
 Require cargo
 Require vhs
 
 Set Width 1200
 Set Height 760
-Set TypingSpeed 25ms
 Set Theme "Aardvark Blue"
 
 Hide
@@ -16,7 +15,7 @@ Type "cargo run --example demo"
 Enter
 Sleep 4s
 Show
-Sleep 6s
+Sleep 4s
 
 Type "j"
 Sleep 1s
@@ -27,16 +26,6 @@ Sleep 1s
 Escape
 Sleep 1s
 Type "j"
-Sleep 2s
-Type "d"
-Sleep 3s
-Type "d"
-Sleep 3s
-Up 5
-Sleep 4s
-Down 2
-Sleep 2s
-Down 10
 Sleep 4s
 Hide
 Type "q"
