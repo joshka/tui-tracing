@@ -32,6 +32,7 @@
 //! - [`TraceStore`] retains those records for runtime inspection and exposes storage counters
 //!   through [`TraceStore::status`].
 //! - [`TraceFilter`] filters retained records at display time without losing data.
+//! - [`FormatOptions`] controls compact event-row formatting.
 //! - [`TraceViewer`] renders the event-stream view and owns scroll/filter state.
 //! - [`TraceEventDetail`] renders full detail for one selected event.
 //! - [`TimingLayer`] optionally records span busy/idle timing.
@@ -64,13 +65,18 @@
 //!
 //! ```text
 //! 12:04:31.123 INFO  app::net: connected peer=alpha latency=12ms
-//! 12:04:32.018 WARN  sync{peer=alpha}: retrying attempt=2 error=timeout
+//! 12:04:32.018 WARN  app::sync: sync{peer=alpha}: retrying attempt=2 error=timeout
 //! ```
 //!
-//! A row should remain useful when an event has no `message` field. Field-only
-//! events are valid tracing output. Complete fields, source location, full span
-//! stack, span fields, lifecycle state, and timing belong in a detail view for the
-//! selected event.
+//! Compact rows use [`TimestampFormat::ShortLocal`] by default because full
+//! timestamps are usually too wide for an in-app diagnostics pane. Rows still keep
+//! the `tracing_subscriber::fmt`-style hierarchy of level, target, span context,
+//! message, and fields. A row should remain useful when an event has no `message`
+//! field because field-only events are valid tracing output.
+//!
+//! Selected-event detail is the full metadata surface. It keeps the complete
+//! timestamp, level, target, module path, source location, promoted message, event
+//! fields, full span stack, span fields, lifecycle state, and timing.
 //!
 //! The main screen should expose behavior that applications can bind to their own
 //! input model:
@@ -116,7 +122,7 @@ mod timing_layer;
 
 pub use field::{FieldMap, FieldValue};
 pub use filter::TraceFilter;
-pub use format::FormatOptions;
+pub use format::{FormatOptions, TimestampFormat};
 pub use layer::{TraceLayer, TracingLayer};
 pub use record::{EventId, EventRecord, Level, SpanId, SpanRecord};
 pub use store::{TraceSnapshot, TraceStore, TraceStoreStatus};

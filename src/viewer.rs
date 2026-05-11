@@ -411,7 +411,7 @@ impl TraceEventDetail {
             ),
         ];
 
-        push_fields(&mut lines, "Fields", &self.event.fields);
+        push_event_fields(&mut lines, &self.event.fields);
         push_span_stack(&mut lines, &self.span_stack);
 
         lines.into()
@@ -471,6 +471,22 @@ fn push_fields(lines: &mut Vec<Line<'static>>, heading: &'static str, fields: &F
     }
 }
 
+fn push_event_fields(lines: &mut Vec<Line<'static>>, fields: &FieldMap) {
+    lines.push(heading_line("Fields"));
+    let mut pushed = false;
+    for (name, value) in fields {
+        if name == "message" {
+            continue;
+        }
+        lines.push(detail_line(name, value.to_string()));
+        pushed = true;
+    }
+
+    if !pushed {
+        lines.push(muted_line("  <none>"));
+    }
+}
+
 fn push_span_stack(lines: &mut Vec<Line<'static>>, span_stack: &[TraceSpanDetail]) {
     lines.push(heading("Span stack"));
     if span_stack.is_empty() {
@@ -520,7 +536,6 @@ fn push_span(lines: &mut Vec<Line<'static>>, index: usize, span: &SpanRecord) {
             "open"
         },
     ));
-    push_fields(lines, "     fields", &span.fields);
 
     if let Some(timing) = span.timing {
         lines.push(indented_detail_line(
@@ -536,6 +551,7 @@ fn push_span(lines: &mut Vec<Line<'static>>, index: usize, span: &SpanRecord) {
             ),
         ));
     }
+    push_fields(lines, "     fields", &span.fields);
 }
 
 fn heading(label: &'static str) -> Line<'static> {

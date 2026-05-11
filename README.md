@@ -21,6 +21,15 @@ The default viewer is event-stream-first. It should feel familiar to users of
 `tracing_subscriber::fmt`: colored levels, readable timestamps, messages, structured fields, and
 compact span context.
 
+Compact rows default to a short local timestamp so they fit inside an application pane:
+
+```text
+12:04:31.123 INFO  app::net: request{peer="alpha"}: connected latency_ms=12
+```
+
+Selected-event detail keeps the complete timestamp, target, module path, source location, promoted
+message, event fields, span stack, span fields, lifecycle state, and timing data.
+
 Span trees, timing summaries, and aggregation are secondary views built from the same retained
 records. Nesting is important data, but it should not dominate the first diagnostic view.
 
@@ -86,9 +95,11 @@ Applications can move selection with `select_next`, `select_previous`, `select_f
 `select_last`, then read `selected_event` or `TraceViewer::status()` for app-owned detail views.
 For rendering full selected-event context, call `selected_detail()` and render the returned
 `TraceEventDetail` into a caller-owned pane. Compact row rendering remains fmt-like and optimized
-for scanning; detail rendering is where full fields, source location, and span-stack context live.
-`TraceEventDetail::text()` exposes the formatted detail text for applications that need their own
-scroll state, borders, titles, or layout chrome around the detail pane.
+for scanning: short timestamp, level, target, span context, message, and fields.
+`FormatOptions` can switch compact rows to full RFC 3339 timestamps or a custom Chrono format.
+Detail rendering is where full fields, source location, and span-stack context live.
+`TraceEventDetail::text()` exposes the formatted detail text for applications that need their
+own scroll state, borders, titles, or layout chrome around the detail pane.
 
 ## Current Public Path
 
@@ -97,6 +108,7 @@ scroll state, borders, titles, or layout chrome around the detail pane.
 - `TraceViewer`: Ratatui event-stream viewer.
 - `TraceEventDetail`: renderable selected-event detail.
 - `TraceFilter`: display-time event filter.
+- `FormatOptions`: compact row formatting options.
 - `TimingLayer`: optional span busy/idle timing layer.
 
 The demo in `examples/demo.rs` is intentionally small and should stay aligned with the public API

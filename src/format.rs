@@ -15,13 +15,13 @@ use crate::store::TraceSnapshot;
 /// Options for rendering captured trace records.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FormatOptions {
-    /// Timestamp format used for each event line.
-    pub timestamp_format: String,
+    /// Timestamp format used for each compact event row.
+    pub timestamp_format: TimestampFormat,
 
-    /// Whether to render compact span context before the event message.
+    /// Whether to render compact span context after the event target.
     pub show_span_context: bool,
 
-    /// Whether to render event target when no span context is available.
+    /// Whether to render event target before the event message.
     pub show_target: bool,
 
     /// Whether to render source file and line when present.
@@ -31,10 +31,40 @@ pub struct FormatOptions {
 impl Default for FormatOptions {
     fn default() -> Self {
         Self {
-            timestamp_format: "%Y-%m-%dT%H:%M:%S%.6f%:z".to_owned(),
+            timestamp_format: TimestampFormat::default(),
             show_span_context: true,
             show_target: true,
             show_location: false,
+        }
+    }
+}
+
+/// Timestamp format used for compact event rows.
+///
+/// Selected-event detail always uses a full RFC 3339 timestamp. This type only
+/// controls the dense event stream where horizontal space is limited.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum TimestampFormat {
+    /// Local wall-clock time with millisecond precision, such as `12:04:31.123`.
+    #[default]
+    ShortLocal,
+
+    /// Full RFC 3339 timestamp with microsecond precision and local offset.
+    Rfc3339,
+
+    /// Custom [`chrono`] format string.
+    ///
+    /// Invalid format strings do not fail rendering; they are rendered according
+    /// to `chrono`'s formatting behavior.
+    Custom(String),
+}
+
+impl TimestampFormat {
+    fn format(&self, timestamp: chrono::DateTime<chrono::Local>) -> String {
+        match self {
+            Self::ShortLocal => timestamp.format("%H:%M:%S%.3f").to_string(),
+            Self::Rfc3339 => timestamp.format("%Y-%m-%dT%H:%M:%S%.6f%:z").to_string(),
+            Self::Custom(format) => timestamp.format(format).to_string(),
         }
     }
 }
@@ -46,18 +76,15 @@ pub(crate) fn event_line(
 ) -> Line<'static> {
     let mut spans = vec![
         Span::styled(
-            event
-                .timestamp
-                .format(&options.timestamp_format)
-                .to_string(),
+            options.timestamp_format.format(event.timestamp),
             Style::default().add_modifier(Modifier::DIM),
         ),
         Span::raw(" "),
         level_span(event.level),
     ];
 
-    push_context(&mut spans, event, snapshot, options);
     push_target(&mut spans, event, options);
+    push_context(&mut spans, event, snapshot, options);
 
     if options.show_location {
         push_location(&mut spans, event);
