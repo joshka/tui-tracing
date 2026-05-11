@@ -198,6 +198,24 @@ Recommended GitHub Actions shape:
 - For docs.rs, configure metadata intentionally: all relevant features, documented cfgs when
   needed, and platform docs if platform-specific APIs matter.
 
+## Visual Demo Artifact Standards
+
+- Treat VHS tapes as source artifacts and generated GIFs as build artifacts.
+- Commit tapes under `tapes/`; do not commit generated GIFs or other binary captures.
+- Generate demo GIFs with `just demo-gif` so environment cleanup is centralized. In particular,
+  unset inherited color variables such as `NO_COLOR` in the recipe, not in the tape.
+- Use the `Aardvark Blue` theme for Ratatui screenshots and GIFs unless a specific comparison
+  needs another theme.
+- Keep captures at or below 1200 pixels wide unless a specific target requires otherwise.
+- Keep one calm README-oriented GIF per pull request. It should show the core viewer flow, not a
+  catalog of every interaction.
+- For pull requests, attach the generated GIF directly to a PR comment. Use GitHub release assets
+  only for actual release artifacts that should have stable links from the README or docs.
+- Hide setup, build, and quit commands. Show the terminal only while the demo content is visible.
+- Use simple pacing. Sleeps are acceptable for fixed demo flow; wait for screen content only when
+  startup or build timing is otherwise unreliable.
+- Give dense log screens enough dwell time to be readable while keeping file size small.
+
 ## Release Automation
 
 - Have one command or documented checklist that reproduces the release gate.

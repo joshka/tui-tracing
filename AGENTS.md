@@ -44,5 +44,6 @@ actual releases.
 ## VHS Demo Artifacts
 
 VHS tapes are text source and may be committed; generated GIFs must stay out of the repository.
-Use `Aardvark Blue`, keep captures at or below 1200px wide, hide setup/build/quit commands, and put
-environment cleanup such as unsetting `NO_COLOR` in `just demo-gif`, not in the tape.
+Use one calm README-oriented GIF per PR, generated from `tapes/demo.tape`. Use `Aardvark Blue`,
+keep captures at or below 1200px wide, hide setup/build/quit commands, and put environment cleanup
+such as unsetting `NO_COLOR` in `just demo-gif`, not in the tape.

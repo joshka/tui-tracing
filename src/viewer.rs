@@ -12,7 +12,7 @@ use ratatui::widgets::{Paragraph, Widget};
 
 use crate::field::FieldMap;
 use crate::filter::TraceFilter;
-use crate::format::{event_line, FormatOptions};
+use crate::format::{FormatOptions, event_line};
 use crate::record::{EventId, EventRecord, SpanId, SpanRecord};
 use crate::store::{TraceSnapshot, TraceStore, TraceStoreStatus};
 
@@ -135,6 +135,32 @@ impl TraceViewer {
     /// Replace the formatting options.
     pub fn set_format_options(&mut self, format: FormatOptions) {
         self.format = format;
+    }
+
+    /// Return whether compact event rows include span context.
+    ///
+    /// Span context is hidden by default because it can dominate compact rows.
+    /// Selected-event detail still includes the full span stack regardless of this
+    /// setting.
+    pub fn show_span_context(&self) -> bool {
+        self.format.show_span_context
+    }
+
+    /// Set whether compact event rows include span context.
+    ///
+    /// This updates display formatting only. It does not change captured records,
+    /// active filters, selection, or scroll position.
+    pub fn set_show_span_context(&mut self, show: bool) {
+        self.format.show_span_context = show;
+    }
+
+    /// Toggle span context in compact event rows and return the new value.
+    ///
+    /// This is a convenience for application keybindings. Selected-event detail
+    /// remains complete whether compact rows show span context or not.
+    pub fn toggle_span_context(&mut self) -> bool {
+        self.format.show_span_context = !self.format.show_span_context;
+        self.format.show_span_context
     }
 
     /// Return whether compact event rows include source locations.

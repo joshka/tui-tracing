@@ -21,6 +21,10 @@ pub struct FormatOptions {
     pub timestamp_format: TimestampFormat,
 
     /// Whether to render compact span context after the event target.
+    ///
+    /// This is disabled by default so compact rows prioritize the event target,
+    /// message, and fields. Selected-event detail still exposes the full span
+    /// stack.
     pub show_span_context: bool,
 
     /// Whether to render event target before the event message.
@@ -34,7 +38,7 @@ impl Default for FormatOptions {
     fn default() -> Self {
         Self {
             timestamp_format: TimestampFormat::default(),
-            show_span_context: true,
+            show_span_context: false,
             show_target: true,
             show_location: false,
         }

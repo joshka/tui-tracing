@@ -65,14 +65,16 @@
 //!
 //! ```text
 //! 12:04:31.123 INFO  app::net: connected peer=alpha latency=12ms
-//! 12:04:32.018 WARN  app::sync: sync{peer=alpha}: retrying attempt=2 error=timeout
+//! 12:04:32.018 WARN  app::sync: retrying attempt=2 error=timeout
 //! ```
 //!
 //! Compact rows use [`TimestampFormat::ShortLocal`] by default because full
-//! timestamps are usually too wide for an in-app diagnostics pane. Rows still keep
-//! the `tracing_subscriber::fmt`-style hierarchy of level, target, span context,
-//! message, and fields. A row should remain useful when an event has no `message`
-//! field because field-only events are valid tracing output.
+//! timestamps are usually too wide for an in-app diagnostics pane. Rows prioritize
+//! level, target, message, and fields. Inline span context is available through
+//! [`FormatOptions`] and [`TraceViewer::set_show_span_context`], but is hidden by
+//! default so nested spans do not dominate the event stream. A row should remain
+//! useful when an event has no `message` field because field-only events are valid
+//! tracing output.
 //! Long compact-row content is truncated before Ratatui clips the line, with an
 //! inline `...` marker showing that complete data is available in detail.
 //!
@@ -113,6 +115,7 @@
 #![forbid(unsafe_code)]
 #![deny(rustdoc::bare_urls)]
 #![deny(rustdoc::broken_intra_doc_links)]
+#![warn(missing_docs)]
 #![warn(unreachable_pub)]
 
 pub mod field;
@@ -128,10 +131,10 @@ mod timing_layer;
 pub use field::{FieldMap, FieldValue};
 pub use filter::TraceFilter;
 pub use format::{FormatOptions, TimestampFormat};
-pub use layer::{TraceLayer, TracingLayer};
+pub use layer::TraceLayer;
 pub use record::{EventId, EventRecord, Level, SpanId, SpanRecord};
 pub use store::{TraceSnapshot, TraceStore, TraceStoreStatus};
-pub use timing_layer::{Timing, TimingLayer};
+pub use timing_layer::{Timing, TimingLayer, TimingState};
 pub use viewer::{
     TraceEventDetail, TraceScrollMode, TraceSpanDetail, TraceViewStatus, TraceViewer,
 };

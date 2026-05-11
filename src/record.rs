@@ -5,10 +5,10 @@
 //! without holding store locks during formatting or rendering.
 
 use chrono::{DateTime, Local};
-use tracing::{span, Metadata};
+use tracing::{Metadata, span};
 
-use crate::field::FieldMap;
 use crate::Timing;
+use crate::field::FieldMap;
 
 /// Stable sequence number assigned when an event is captured.
 pub type EventId = u64;
@@ -149,11 +149,23 @@ impl SpanRecord {
 }
 
 /// Tracing level captured as a small value type.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct Level(pub tracing::Level);
 
 impl From<tracing::Level> for Level {
     fn from(level: tracing::Level) -> Self {
         Self(level)
+    }
+}
+
+impl From<Level> for tracing::Level {
+    fn from(level: Level) -> Self {
+        level.0
+    }
+}
+
+impl std::fmt::Display for Level {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }

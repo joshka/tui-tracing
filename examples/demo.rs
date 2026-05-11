@@ -6,15 +6,15 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use futures::StreamExt;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::EventStream;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph};
-use ratatui::DefaultTerminal;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, trace, warn, Level};
+use tracing::{Level, debug, error, info, trace, warn};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -100,6 +100,7 @@ impl App {
         let status = demo_status(
             self.min_level,
             self.viewer.status(),
+            self.viewer.show_span_context(),
             self.viewer.show_source_locations(),
         )
         .style(bar_style);
@@ -137,6 +138,10 @@ impl App {
             Some(Action::ToggleSourceLocations) => {
                 let visible = self.viewer.toggle_source_locations();
                 info!(source_locations = visible, "toggled source locations");
+            }
+            Some(Action::ToggleSpanContext) => {
+                let visible = self.viewer.toggle_span_context();
+                info!(span_context = visible, "toggled compact span context");
             }
             Some(Action::SelectNext) => {
                 self.viewer.select_next();
@@ -187,6 +192,7 @@ enum Action {
     Quit,
     CycleLevel,
     ToggleSourceLocations,
+    ToggleSpanContext,
     SelectNext,
     SelectPrevious,
     ClearSelection,
@@ -208,6 +214,7 @@ fn action_for_event(event: &Event) -> Option<Action> {
     match code {
         KeyCode::Char('q') => Some(Action::Quit),
         KeyCode::Char('l') => Some(Action::CycleLevel),
+        KeyCode::Char('c') => Some(Action::ToggleSpanContext),
         KeyCode::Char('s') => Some(Action::ToggleSourceLocations),
         KeyCode::Char('j') => Some(Action::SelectNext),
         KeyCode::Char('k') => Some(Action::SelectPrevious),
@@ -234,6 +241,7 @@ fn log_ignored_event(event: Event) {
 fn demo_status(
     min_level: Level,
     status: TraceViewStatus,
+    show_span_context: bool,
     show_source_locations: bool,
 ) -> Line<'static> {
     let mode = match status.scroll_mode {
@@ -250,9 +258,14 @@ fn demo_status(
     } else {
         "source off"
     };
+    let spans = if show_span_context {
+        "spans on"
+    } else {
+        "spans off"
+    };
 
     Line::from(format!(
-        "q quit | l level {min_level}+ | s {source} | j/k select | Esc clear | u/d scroll | b/f page | g/G jump | [/] detail | {mode} | {selected} | visible {}/{} | lost {}",
+        "q quit | l level {min_level}+ | c {spans} | s {source} | j/k select | Esc clear | u/d scroll | b/f page | g/G jump | [/] detail | {mode} | {selected} | visible {}/{} | lost {}",
         status.visible_events,
         status.store.retained_events,
         status.store.lost_events()
