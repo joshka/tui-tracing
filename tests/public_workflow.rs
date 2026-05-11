@@ -712,7 +712,7 @@ fn selected_detail_styles_event_and_span_hierarchy() {
     assert_cell_style(&buffer, "fields", Color::Gray, Modifier::BOLD);
     assert_cell_style(&buffer, "answer:", Color::Gray, Modifier::empty());
     assert_cell_style(&buffer, "Span stack", Color::Cyan, Modifier::BOLD);
-    assert_cell_style(&buffer, "0.", Color::DarkGray, Modifier::DIM);
+    assert_cell_style_after(&buffer, "Span stack", "0.", Color::DarkGray, Modifier::DIM);
     assert_cell_style(&buffer, "request", Color::Cyan, Modifier::BOLD);
     assert_cell_style(&buffer, "user:", Color::Gray, Modifier::empty());
 }
@@ -1085,6 +1085,21 @@ fn assert_ordered(rendered: &str, needles: &[&str]) {
 
 fn assert_cell_style(buffer: &Buffer, text: &str, fg: Color, modifier: Modifier) {
     let (x, y) = find_text(buffer, text);
+    assert_cell_at(buffer, text, x, y, fg, modifier);
+}
+
+fn assert_cell_style_after(
+    buffer: &Buffer,
+    after: &str,
+    text: &str,
+    fg: Color,
+    modifier: Modifier,
+) {
+    let (x, y) = find_text_after(buffer, after, text);
+    assert_cell_at(buffer, text, x, y, fg, modifier);
+}
+
+fn assert_cell_at(buffer: &Buffer, text: &str, x: u16, y: u16, fg: Color, modifier: Modifier) {
     let cell = buffer
         .cell((x, y))
         .expect("text coordinate points inside the buffer");
@@ -1098,8 +1113,17 @@ fn assert_cell_style(buffer: &Buffer, text: &str, fg: Color, modifier: Modifier)
 }
 
 fn find_text(buffer: &Buffer, text: &str) -> (u16, u16) {
+    find_text_from(buffer, text, buffer.area.y)
+}
+
+fn find_text_after(buffer: &Buffer, after: &str, text: &str) -> (u16, u16) {
+    let (_, after_y) = find_text(buffer, after);
+    find_text_from(buffer, text, after_y)
+}
+
+fn find_text_from(buffer: &Buffer, text: &str, start_y: u16) -> (u16, u16) {
     let area = buffer.area;
-    for y in area.y..area.y + area.height {
+    for y in start_y..area.y + area.height {
         let row = (area.x..area.x + area.width)
             .filter_map(|x| buffer.cell((x, y)).map(|cell| cell.symbol()))
             .collect::<String>();
