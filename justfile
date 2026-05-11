@@ -34,3 +34,7 @@ machete:
     cargo machete
 
 ci: fmt-check check test clippy doc markdown package audit machete
+
+demo-gif:
+    mkdir -p target/vhs
+    env -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE -u FORCE_COLOR vhs tapes/demo.tape

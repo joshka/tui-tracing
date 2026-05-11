@@ -36,6 +36,17 @@ This crate is experimental, but releases should still use a repeatable quality g
    for an actual release candidate.
 
 1. Inspect the packaged README, examples, license files, and included source files.
+1. Regenerate demo GIFs when the viewer, demo, or README screenshots change:
+
+   ```sh
+   just demo-gif
+   ```
+
+   Generated GIFs are written under `target/vhs/`, which is ignored by version control. Do not
+   commit generated GIFs. For pull request review, attach generated GIFs directly to a pull request
+   comment. Use GitHub release assets only for actual release artifacts that should become stable
+   README or docs links.
+
 1. Publish with a dry run first.
 1. For the first crates.io release, publish manually with a scoped token. crates.io requires the
    first release before trusted publishing can be configured.
