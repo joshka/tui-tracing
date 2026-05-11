@@ -229,6 +229,103 @@ fn viewer_supports_configured_timestamp_formats() {
 }
 
 #[test]
+fn viewer_marks_overflow_for_long_targets() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!(
+            target: "public_workflow::very_long_component_name::deeply_nested_module_name",
+            "connected"
+        );
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    let rendered = render_viewer(&mut viewer, 64, 3);
+    let row = first_non_empty_row(&rendered);
+
+    assert!(row.contains("..."));
+    assert!(row.contains("connected"));
+    assert!(!row.contains("deeply_nested_module_name"));
+}
+
+#[test]
+fn viewer_marks_overflow_for_long_span_context_and_keeps_innermost_span() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        let outer = tracing::info_span!("outer_very_long_span_name", request_id = "req-123456789");
+        let _outer = outer.enter();
+        let middle = tracing::info_span!("middle_very_long_span_name", shard = "checkout-west");
+        let _middle = middle.enter();
+        let inner = tracing::info_span!("inner_important_span", peer = "alpha");
+        let _inner = inner.enter();
+        tracing::warn!("retrying");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    let rendered = render_viewer(&mut viewer, 96, 3);
+    let row = first_non_empty_row(&rendered);
+
+    assert!(row.contains("..."));
+    assert!(row.contains("inner_important_span"));
+    assert!(row.contains("retrying"));
+}
+
+#[test]
+fn viewer_marks_overflow_for_long_messages() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::error!(
+            target: "demo",
+            "failed to persist snapshot after repeated retry attempts for local session"
+        );
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    let rendered = render_viewer(&mut viewer, 72, 3);
+    let row = first_non_empty_row(&rendered);
+
+    assert!(row.contains("failed to persist snapshot"));
+    assert!(row.contains("..."));
+    assert!(!row.contains("local session"));
+}
+
+#[test]
+fn viewer_marks_overflow_for_long_fields_but_detail_remains_complete() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+    let value = "field-value-that-is-long-enough-to-overflow-the-compact-row";
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!(target: "demo", payload = value, "stored");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    let rendered = render_viewer(&mut viewer, 70, 3);
+    let row = first_non_empty_row(&rendered);
+
+    assert!(row.contains("stored"));
+    assert!(row.contains("payload="));
+    assert!(row.contains("..."));
+    assert!(!row.contains("compact-row"));
+
+    viewer.select_first();
+    let detail = viewer
+        .selected_detail()
+        .expect("selected visible event has detail");
+    let rendered = render_detail(&detail, 140, 16);
+
+    assert!(rendered.contains("message: stored"));
+    assert!(
+        rendered.contains("payload: field-value-that-is-long-enough-to-overflow-the-compact-row")
+    );
+}
+
+#[test]
 fn display_filter_does_not_drop_captured_events() {
     let store = TraceStore::default();
     let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
