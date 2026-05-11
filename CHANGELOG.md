@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/joshka/tui-tracing/compare/v0.1.0...v0.2.0) - 2026-05-11
+
+### Other
+
+- Fix detail style test lookup ([#44](https://github.com/joshka/tui-tracing/pull/44))
+- Add release demo GIF to README
+- Simplify README demo GIF flow ([#42](https://github.com/joshka/tui-tracing/pull/42))
+- Refine detail view styles ([#41](https://github.com/joshka/tui-tracing/pull/41))
+- Add source location controls ([#40](https://github.com/joshka/tui-tracing/pull/40))
+- Add compact row overflow indicators
+- Define formatting hierarchy ([#38](https://github.com/joshka/tui-tracing/pull/38))
+- Add selected event detail rendering ([#35](https://github.com/joshka/tui-tracing/pull/35))
+- Add viewer page movement controls ([#34](https://github.com/joshka/tui-tracing/pull/34))
+- Add trace viewer selection state ([#33](https://github.com/joshka/tui-tracing/pull/33))
+- Document contributor and VHS artifact rules
+- Add VHS demo capture workflow ([#31](https://github.com/joshka/tui-tracing/pull/31))
+- Expose structured viewer status ([#29](https://github.com/joshka/tui-tracing/pull/29))
+- Expose retention status helpers ([#28](https://github.com/joshka/tui-tracing/pull/28))
+- Track trace storage loss counts ([#27](https://github.com/joshka/tui-tracing/pull/27))
+- release v0.1.0 ([#24](https://github.com/joshka/tui-tracing/pull/24))
+
 ## [0.1.0](https://github.com/joshka/tui-tracing/releases/tag/v0.1.0) - 2026-05-11
 
 ### Other
