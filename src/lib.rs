@@ -82,76 +82,43 @@
 //! This crate currently has no feature flags. All public APIs are available with
 //! default dependencies.
 //!
-//! # Main Screen
+//! # Viewer Surface
 //!
-//! The default [`TraceViewer`] screen should answer one question first: what just
-//! happened in the application, and what context is needed to decide where to look
-//! next?
+//! [`TraceViewer`] renders the default event-stream surface. It is meant to
+//! answer one question quickly: what just happened in the application?
 //!
-//! The main screen is an event stream, not a span tree. Span nesting is important
-//! runtime context, but it should appear as compact inline context first and as
-//! full detail only when the user selects or expands an event. This keeps the
-//! common diagnostic path close to [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt) output
-//! while still preserving structured tracing data for richer views.
+//! The viewer is not a span tree. Span nesting is retained as event context and
+//! can be shown in compact rows when useful, but rows default to the same
+//! event-first shape as [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt):
+//! timestamp, level, target, message, and fields.
 //!
-//! The first visible surface should cover:
-//!
-//! - recent events, with timestamp, colored level, context, message, and fields;
-//! - display-time filters, so retained data can be narrowed without changing capture;
-//! - follow-tail and scrollback state, so live events do not disrupt inspection;
-//! - selection state, so one event can expose full detail without changing the whole view;
-//! - enough store status to explain what is visible and what may be hidden.
-//!
-//! Each event row should optimize for scanning:
+//! Compact rows default to [`TimestampFormat::ShortLocal`] so recent events fit
+//! inside an application pane:
 //!
 //! ```text
-//! 12:04:31.123 INFO  app::net: connected peer=alpha latency=12ms
+//! 12:04:31.123 INFO  app::net: connected peer=alpha latency_ms=12
 //! 12:04:32.018 WARN  app::sync: retrying attempt=2 error=timeout
 //! ```
 //!
-//! Compact rows use [`TimestampFormat::ShortLocal`] by default because full
-//! timestamps consume width needed for target, message, and fields. Inline span
-//! context is available through
-//! [`FormatOptions`] and [`TraceViewer::set_show_span_context`], but is hidden by
-//! default so nested spans do not dominate the event stream. A row should remain
-//! useful when an event has no `message` field because field-only events are valid
-//! tracing output.
-//! Long compact-row content is truncated before Ratatui clips the line, with an
-//! inline `...` marker showing that complete data is available in detail.
+//! Display-time filtering is handled by [`TraceFilter`], so applications can
+//! narrow the visible events without dropping retained records. The current
+//! filter supports minimum level, target substring, span-name substring,
+//! free-text matching, and exact field-name plus text-value matching.
 //!
-//! Selected-event detail is the full metadata surface. It keeps the complete
-//! timestamp, level, target, module path, source location, promoted message, event
-//! fields, full span stack, span fields, lifecycle state, and timing.
-//! Detail styling uses restrained color and indentation to show ownership:
-//! metadata and fields belong to the selected event, and span fields belong to
-//! the span context around that event.
+//! [`TraceViewer`] owns the interaction state needed to render this stream:
+//! follow-tail versus scrollback mode, scroll position, selected event, source
+//! location visibility, span-context visibility, and the active filter.
+//! Applications bind their own input model to methods such as
+//! [`TraceViewer::scroll_up`], [`TraceViewer::scroll_down`],
+//! [`TraceViewer::page_up`], [`TraceViewer::page_down`],
+//! [`TraceViewer::jump_to_oldest`], [`TraceViewer::jump_to_newest`],
+//! [`TraceViewer::select_previous`], and [`TraceViewer::select_next`].
 //!
-//! The main screen should expose behavior that applications can bind to their own
-//! input model:
-//!
-//! - set or clear the minimum visible level;
-//! - filter by target, module, span name, text, field name, or field value;
-//! - toggle source locations in compact event rows;
-//! - scroll older or newer;
-//! - move by rendered pages;
-//! - jump to the oldest or newest visible event;
-//! - select previous or next visible event;
-//! - expand selected event details;
-//! - toggle aggregation once grouped rows exist.
-//!
-//! Aggregation belongs on the main screen after the raw event stream is reliable.
-//! Grouped rows should reduce repeated-event noise while preserving access to each
-//! occurrence. A conservative grouping key should start with level, target,
-//! message, span context shape, field names, and selected stable field values.
-//!
-//! The main screen should not own every tracing tool. Full span-tree navigation,
-//! timing dashboards, task graphs, metrics summaries, capture filter editing, file
-//! export, and long-form help should remain separate views or application-owned
-//! features built from [`TraceStore`].
-//!
-//! The current implementation is an initial version of that shape. Missing pieces
-//! that the public API should grow toward include compact filter/status summaries,
-//! overflow handling for long context and fields, and grouped rows.
+//! [`TraceViewer::status`] exposes the current view state and underlying storage
+//! counters for application-owned status bars. [`TraceViewer::selected_detail`]
+//! returns the full detail surface for the selected event, including complete
+//! timestamp, target, module path, source location, event fields, span stack,
+//! span fields, lifecycle state, and timing when available.
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::bare_urls)]

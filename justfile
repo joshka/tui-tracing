@@ -16,7 +16,8 @@ test:
     cargo test --examples --workspace --all-features
 
 clippy:
-    cargo clippy --workspace --all-features --all-targets -- -D warnings
+    cargo +stable clippy --workspace --all-features --all-targets -- -D warnings
+    cargo +beta clippy --workspace --all-features --all-targets -- -D warnings
 
 doc:
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps
@@ -36,7 +37,10 @@ audit:
 machete:
     cargo machete
 
-ci: fmt-check check test clippy doc docs-rs markdown package audit machete
+minimal-versions:
+    cargo minimal-versions check --direct --workspace --all-targets --all-features
+
+ci: fmt-check check test clippy doc docs-rs markdown package audit machete minimal-versions
 
 demo-gif:
     mkdir -p target/vhs
