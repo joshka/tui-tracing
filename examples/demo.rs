@@ -8,9 +8,9 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ratatui::crossterm::event::EventStream;
 use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Paragraph};
 use ratatui::DefaultTerminal;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
@@ -50,6 +50,7 @@ struct App {
     viewer: TraceViewer,
     cancellation_token: CancellationToken,
     min_level: Level,
+    detail_scroll: u16,
 }
 
 impl App {
@@ -59,6 +60,7 @@ impl App {
             viewer,
             cancellation_token: CancellationToken::new(),
             min_level: Level::DEBUG,
+            detail_scroll: 0,
         }
     }
 
@@ -90,14 +92,31 @@ impl App {
         ])
         .areas(frame.area());
 
-        let title =
-            Line::from("tui-tracing demo").style(Style::default().add_modifier(Modifier::BOLD));
-        let status = demo_status(self.min_level, self.viewer.status())
-            .style(Style::default().add_modifier(Modifier::DIM));
+        let bar_style = Style::default()
+            .fg(Color::White)
+            .bg(Color::Blue)
+            .add_modifier(Modifier::BOLD);
+        let title = Line::from("tui-tracing demo").style(bar_style);
+        let status = demo_status(self.min_level, self.viewer.status()).style(bar_style);
 
-        frame.render_widget(Paragraph::new(title), title_area);
-        frame.render_widget(&mut self.viewer, trace_area);
-        frame.render_widget(Paragraph::new(status), status_area);
+        frame.render_widget(Paragraph::new(title).style(bar_style), title_area);
+        if let Some(detail) = self.viewer.selected_detail() {
+            let [trace_area, detail_area] =
+                Layout::vertical([Constraint::Percentage(58), Constraint::Percentage(42)])
+                    .areas(trace_area);
+            frame.render_widget(&mut self.viewer, trace_area);
+            let detail_block = Block::bordered()
+                .title(" selected event detail ")
+                .border_style(Style::default().fg(Color::Cyan));
+            let detail = Paragraph::new(detail.text())
+                .scroll((self.detail_scroll, 0))
+                .block(detail_block);
+            frame.render_widget(detail, detail_area);
+        } else {
+            self.detail_scroll = 0;
+            frame.render_widget(&mut self.viewer, trace_area);
+        }
+        frame.render_widget(Paragraph::new(status).style(bar_style), status_area);
     }
 
     async fn handle_event(&mut self) -> Result<()> {
@@ -109,15 +128,30 @@ impl App {
         match action_for_event(&event) {
             Some(Action::Quit) => self.cancellation_token.cancel(),
             Some(Action::CycleLevel) => self.cycle_level(),
-            Some(Action::SelectNext) => self.viewer.select_next(),
-            Some(Action::SelectPrevious) => self.viewer.select_previous(),
-            Some(Action::ClearSelection) => self.viewer.clear_selection(),
+            Some(Action::SelectNext) => {
+                self.viewer.select_next();
+                self.detail_scroll = 0;
+            }
+            Some(Action::SelectPrevious) => {
+                self.viewer.select_previous();
+                self.detail_scroll = 0;
+            }
+            Some(Action::ClearSelection) => {
+                self.viewer.clear_selection();
+                self.detail_scroll = 0;
+            }
             Some(Action::ScrollUp) => self.viewer.scroll_up(1),
             Some(Action::ScrollDown) => self.viewer.scroll_down(1),
             Some(Action::PageUp) => self.viewer.page_up(),
             Some(Action::PageDown) => self.viewer.page_down(),
             Some(Action::JumpOldest) => self.viewer.jump_to_oldest(),
             Some(Action::JumpNewest) => self.viewer.jump_to_newest(),
+            Some(Action::DetailScrollUp) => {
+                self.detail_scroll = self.detail_scroll.saturating_sub(1);
+            }
+            Some(Action::DetailScrollDown) => {
+                self.detail_scroll = self.detail_scroll.saturating_add(1);
+            }
             None => log_ignored_event(event),
         }
 
@@ -151,6 +185,8 @@ enum Action {
     PageDown,
     JumpOldest,
     JumpNewest,
+    DetailScrollUp,
+    DetailScrollDown,
 }
 
 fn action_for_event(event: &Event) -> Option<Action> {
@@ -170,6 +206,8 @@ fn action_for_event(event: &Event) -> Option<Action> {
         KeyCode::Char('f') | KeyCode::PageDown => Some(Action::PageDown),
         KeyCode::Char('g') | KeyCode::Home => Some(Action::JumpOldest),
         KeyCode::Char('G') | KeyCode::End => Some(Action::JumpNewest),
+        KeyCode::Char('[') => Some(Action::DetailScrollUp),
+        KeyCode::Char(']') => Some(Action::DetailScrollDown),
         _ => None,
     }
 }
@@ -192,7 +230,7 @@ fn demo_status(min_level: Level, status: TraceViewStatus) -> Line<'static> {
         .unwrap_or_else(|| "selected none".to_owned());
 
     Line::from(format!(
-        "q quit | l level {min_level}+ | j/k select | Esc clear | Up/Down or u/d scroll | PgUp/PgDn or b/f page | g/G jump | {mode} | {selected} | visible {}/{} | lost {}",
+        "q quit | l level {min_level}+ | j/k select | Esc clear | u/d scroll | b/f page | g/G jump | [/] detail | {mode} | {selected} | visible {}/{} | lost {}",
         status.visible_events,
         status.store.retained_events,
         status.store.lost_events()

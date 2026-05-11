@@ -6,13 +6,14 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::text::Text;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Widget};
 
+use crate::field::FieldMap;
 use crate::filter::TraceFilter;
 use crate::format::{event_line, FormatOptions};
-use crate::record::{EventId, EventRecord};
+use crate::record::{EventId, EventRecord, SpanId, SpanRecord};
 use crate::store::{TraceSnapshot, TraceStore, TraceStoreStatus};
 
 /// Event-stream trace viewer for Ratatui applications.
@@ -76,6 +77,18 @@ impl TraceViewer {
     pub fn selected_event(&self) -> Option<EventRecord> {
         let snapshot = self.store.snapshot();
         self.selected_event_for_snapshot(&snapshot).cloned()
+    }
+
+    /// Return renderable detail for the selected retained event.
+    ///
+    /// The returned value owns cloned record data from a single store snapshot, so
+    /// callers can render it later without holding store locks. It returns `None`
+    /// when no event is selected or when the selected event is no longer visible
+    /// through the active display filter.
+    pub fn selected_detail(&self) -> Option<TraceEventDetail> {
+        let snapshot = self.store.snapshot();
+        let event = self.selected_event_for_snapshot(&snapshot)?;
+        Some(TraceEventDetail::from_snapshot(event, &snapshot))
     }
 
     /// Select the first visible event if there is one.
@@ -330,6 +343,258 @@ impl Widget for &mut TraceViewer {
         let scroll = self.scroll(visible_lines, area.height);
         Paragraph::new(text).scroll((scroll, 0)).render(area, buf);
     }
+}
+
+/// Renderable detail for one captured tracing event.
+///
+/// A detail value is an owned snapshot of the selected event and its span stack.
+/// It is separate from compact row rendering so applications can choose whether to
+/// show details in a bottom pane, side pane, popup, or another app-owned surface.
+#[derive(Clone, Debug)]
+pub struct TraceEventDetail {
+    event: EventRecord,
+    span_stack: Vec<TraceSpanDetail>,
+}
+
+impl TraceEventDetail {
+    /// Create event detail from an event and already-resolved span stack.
+    pub fn new(event: EventRecord, span_stack: Vec<TraceSpanDetail>) -> Self {
+        Self { event, span_stack }
+    }
+
+    /// Return the event described by this detail.
+    pub fn event(&self) -> &EventRecord {
+        &self.event
+    }
+
+    /// Return the event span stack from root to innermost span.
+    pub fn span_stack(&self) -> &[TraceSpanDetail] {
+        &self.span_stack
+    }
+
+    fn from_snapshot(event: &EventRecord, snapshot: &TraceSnapshot) -> Self {
+        let span_stack = event
+            .span_stack
+            .iter()
+            .map(|span_id| {
+                snapshot
+                    .spans
+                    .get(span_id)
+                    .cloned()
+                    .map(TraceSpanDetail::present)
+                    .unwrap_or_else(|| TraceSpanDetail::missing(*span_id))
+            })
+            .collect();
+        Self::new(event.clone(), span_stack)
+    }
+
+    /// Format this detail as Ratatui text.
+    ///
+    /// This is useful when callers need app-owned chrome or scrolling around the
+    /// library's detail content. Rendering `&TraceEventDetail` directly uses the
+    /// same text without applying any scroll offset.
+    pub fn text(&self) -> Text<'static> {
+        let mut lines = vec![
+            heading("Event"),
+            detail_line("time", self.event.timestamp.to_rfc3339()),
+            detail_line("level", self.event.level.0.to_string()),
+            detail_line("target", self.event.target.clone()),
+            metadata_line("  module", self.event.module_path.as_deref()),
+            location_line("  location", self.event.file.as_deref(), self.event.line),
+            detail_line(
+                "message",
+                self.event
+                    .fields
+                    .get("message")
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "<none>".to_owned()),
+            ),
+        ];
+
+        push_fields(&mut lines, "Fields", &self.event.fields);
+        push_span_stack(&mut lines, &self.span_stack);
+
+        lines.into()
+    }
+}
+
+impl Widget for &TraceEventDetail {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        Paragraph::new(self.text()).render(area, buf);
+    }
+}
+
+/// Span detail for an event span stack.
+///
+/// A span detail always keeps the referenced span id. The full span record is
+/// present when it was retained in the same snapshot as the event.
+#[derive(Clone, Debug)]
+pub struct TraceSpanDetail {
+    id: SpanId,
+    record: Option<Box<SpanRecord>>,
+}
+
+impl TraceSpanDetail {
+    /// Create detail for a retained span record.
+    pub fn present(record: SpanRecord) -> Self {
+        Self {
+            id: record.id,
+            record: Some(Box::new(record)),
+        }
+    }
+
+    /// Create detail for a span id whose span record is not available.
+    pub fn missing(id: SpanId) -> Self {
+        Self { id, record: None }
+    }
+
+    /// Return the span id referenced by the event.
+    pub fn id(&self) -> SpanId {
+        self.id
+    }
+
+    /// Return the retained span record, if it is available.
+    pub fn record(&self) -> Option<&SpanRecord> {
+        self.record.as_deref()
+    }
+}
+
+fn push_fields(lines: &mut Vec<Line<'static>>, heading: &'static str, fields: &FieldMap) {
+    lines.push(heading_line(heading));
+    if fields.is_empty() {
+        lines.push(muted_line("  <none>"));
+        return;
+    }
+
+    for (name, value) in fields {
+        lines.push(detail_line(name, value.to_string()));
+    }
+}
+
+fn push_span_stack(lines: &mut Vec<Line<'static>>, span_stack: &[TraceSpanDetail]) {
+    lines.push(heading("Span stack"));
+    if span_stack.is_empty() {
+        lines.push(muted_line("  <none>"));
+        return;
+    }
+
+    for (index, detail) in span_stack.iter().enumerate() {
+        if let Some(span) = detail.record() {
+            push_span(lines, index, span);
+        } else {
+            lines.push(muted_line(format!(
+                "  {index}. <missing span {}>",
+                detail.id()
+            )));
+        }
+    }
+}
+
+fn push_span(lines: &mut Vec<Line<'static>>, index: usize, span: &SpanRecord) {
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("  {index}. "),
+            Style::default().add_modifier(Modifier::DIM),
+        ),
+        Span::styled(
+            span.name.clone(),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(indented_detail_line("id", span.id.to_string()));
+    lines.push(indented_detail_line("level", span.level.0.to_string()));
+    lines.push(indented_detail_line("target", span.target.clone()));
+    lines.push(metadata_line("     module", span.module_path.as_deref()));
+    lines.push(location_line(
+        "     location",
+        span.file.as_deref(),
+        span.line,
+    ));
+    lines.push(indented_detail_line(
+        "lifecycle",
+        if span.close_time.is_some() {
+            "closed"
+        } else {
+            "open"
+        },
+    ));
+    push_fields(lines, "     fields", &span.fields);
+
+    if let Some(timing) = span.timing {
+        lines.push(indented_detail_line(
+            "timing",
+            format!(
+                "state={:?} busy={:?} idle={:?} total={:?} enters={} exits={}",
+                timing.state(),
+                timing.busy_duration(),
+                timing.idle_duration(),
+                timing.total_duration(),
+                timing.enter_count(),
+                timing.exit_count()
+            ),
+        ));
+    }
+}
+
+fn heading(label: &'static str) -> Line<'static> {
+    Line::from(label).style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn heading_line(label: &'static str) -> Line<'static> {
+    Line::from(label).style(Style::default().fg(Color::Yellow))
+}
+
+fn detail_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
+    field_line("  ", label, value)
+}
+
+fn indented_detail_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
+    field_line("     ", label, value)
+}
+
+fn field_line(
+    prefix: &'static str,
+    label: impl Into<String>,
+    value: impl Into<String>,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("{prefix}{}:", label.into()),
+            Style::default().fg(Color::Blue),
+        ),
+        Span::raw(" "),
+        Span::raw(value.into()),
+    ])
+}
+
+fn muted_line(text: impl Into<String>) -> Line<'static> {
+    Line::from(text.into()).style(Style::default().add_modifier(Modifier::DIM))
+}
+
+fn metadata_line(label: &'static str, value: Option<&str>) -> Line<'static> {
+    labeled_line(label, value.unwrap_or("<unknown>").to_owned())
+}
+
+fn location_line(label: &'static str, file: Option<&str>, line: Option<u32>) -> Line<'static> {
+    let value = match (file, line) {
+        (Some(file), Some(line)) => format!("{file}:{line}"),
+        (Some(file), None) => file.to_owned(),
+        (None, Some(line)) => format!("<unknown>:{line}"),
+        (None, None) => "<unknown>".to_owned(),
+    };
+    labeled_line(label, value)
+}
+
+fn labeled_line(label: &'static str, value: impl Into<String>) -> Line<'static> {
+    let prefix_len = label.len() - label.trim_start().len();
+    let (prefix, label) = label.split_at(prefix_len);
+    field_line(prefix, label, value)
 }
 
 /// Current scrolling mode for a [`TraceViewer`].

@@ -33,6 +33,7 @@
 //!   through [`TraceStore::status`].
 //! - [`TraceFilter`] filters retained records at display time without losing data.
 //! - [`TraceViewer`] renders the event-stream view and owns scroll/filter state.
+//! - [`TraceEventDetail`] renders full detail for one selected event.
 //! - [`TimingLayer`] optionally records span busy/idle timing.
 //!
 //! Span trees, timing summaries, and aggregation are secondary views built on the
@@ -95,9 +96,8 @@
 //! features built from [`TraceStore`].
 //!
 //! The current implementation is an initial version of that shape. Missing pieces
-//! that the public API should grow toward include detail rendering, compact
-//! filter/status summaries, overflow handling for long context and fields, and
-//! grouped rows.
+//! that the public API should grow toward include compact filter/status summaries,
+//! overflow handling for long context and fields, and grouped rows.
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::bare_urls)]
@@ -121,4 +121,6 @@ pub use layer::{TraceLayer, TracingLayer};
 pub use record::{EventId, EventRecord, Level, SpanId, SpanRecord};
 pub use store::{TraceSnapshot, TraceStore, TraceStoreStatus};
 pub use timing_layer::{Timing, TimingLayer};
-pub use viewer::{TraceScrollMode, TraceViewStatus, TraceViewer};
+pub use viewer::{
+    TraceEventDetail, TraceScrollMode, TraceSpanDetail, TraceViewStatus, TraceViewer,
+};
