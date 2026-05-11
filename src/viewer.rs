@@ -27,6 +27,7 @@ pub struct TraceViewer {
     follow_tail: bool,
     scroll_top: u16,
     last_tail_scroll: u16,
+    last_viewport_height: Option<u16>,
     selected_event_id: Option<EventId>,
 }
 
@@ -40,6 +41,7 @@ impl TraceViewer {
             follow_tail: true,
             scroll_top: 0,
             last_tail_scroll: 0,
+            last_viewport_height: None,
             selected_event_id: None,
         }
     }
@@ -148,6 +150,36 @@ impl TraceViewer {
         }
     }
 
+    /// Scroll one rendered page toward older visible events.
+    ///
+    /// Page size is the height of the most recent render area. Before the first
+    /// render, the viewer uses one line because no viewport height is known yet.
+    pub fn page_up(&mut self) {
+        self.scroll_up(self.page_scroll_lines());
+    }
+
+    /// Scroll one rendered page toward newer visible events.
+    ///
+    /// Page size is the height of the most recent render area. Before the first
+    /// render, the viewer uses one line because no viewport height is known yet.
+    pub fn page_down(&mut self) {
+        self.scroll_down(self.page_scroll_lines());
+    }
+
+    /// Jump to the oldest retained event accepted by the display filter.
+    pub fn jump_to_oldest(&mut self) {
+        self.follow_tail = false;
+        self.scroll_top = 0;
+    }
+
+    /// Jump to the newest retained event accepted by the display filter.
+    ///
+    /// This returns the viewer to follow-tail mode so newly retained visible events
+    /// remain pinned to the bottom of the rendered area.
+    pub fn jump_to_newest(&mut self) {
+        self.follow_tail();
+    }
+
     fn visible_text(&self, snapshot: &TraceSnapshot) -> Text<'static> {
         let selected_event_id = self.selected_event_id;
         self.visible_events(snapshot)
@@ -226,6 +258,7 @@ impl TraceViewer {
     }
 
     fn scroll(&mut self, text_height: usize, area_height: u16) -> u16 {
+        self.last_viewport_height = Some(area_height);
         let tail_scroll = u16::try_from(text_height)
             .unwrap_or(u16::MAX)
             .saturating_sub(area_height);
@@ -238,6 +271,10 @@ impl TraceViewer {
             self.scroll_top = self.scroll_top.min(tail_scroll);
             self.scroll_top
         }
+    }
+
+    fn page_scroll_lines(&self) -> u16 {
+        self.last_viewport_height.unwrap_or(1).max(1)
     }
 }
 

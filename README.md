@@ -71,9 +71,10 @@ current number of visible rows. That value is only known once the host applicati
 layout area for the widget.
 
 The practical effect is that applications can keep `TraceViewer` directly in app state, mutate it
-through methods such as `set_filter`, `scroll_up`, `scroll_down`, and `follow_tail`, and then
-render `&mut viewer` in the area they assign to trace output. This avoids `StatefulWidget` while
-still preserving correct follow-tail and scrollback behavior.
+through methods such as `set_filter`, `scroll_up`, `scroll_down`, `page_up`, `page_down`,
+`jump_to_oldest`, and `jump_to_newest`, and then render `&mut viewer` in the area they assign to
+trace output. This avoids `StatefulWidget` while still preserving correct follow-tail and
+scrollback behavior.
 
 Applications can call `TraceViewer::status()` to build their own status bars without duplicating
 viewer logic. The returned status includes follow-tail versus scrollback mode, the last computed
