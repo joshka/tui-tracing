@@ -8,10 +8,10 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::EventStream;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::text::{Line, Text};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
 use tracing::{Level, debug, error, info, trace, warn};
@@ -49,8 +49,10 @@ struct App {
     event_stream: EventStream,
     viewer: TraceViewer,
     cancellation_token: CancellationToken,
-    min_level: Level,
+    min_level: Option<Level>,
     detail_scroll: u16,
+    show_detail: bool,
+    show_help: bool,
 }
 
 impl App {
@@ -59,8 +61,10 @@ impl App {
             event_stream: EventStream::new(),
             viewer,
             cancellation_token: CancellationToken::new(),
-            min_level: Level::DEBUG,
+            min_level: Some(Level::DEBUG),
             detail_scroll: 0,
+            show_detail: true,
+            show_help: false,
         }
     }
 
@@ -102,11 +106,14 @@ impl App {
             self.viewer.status(),
             self.viewer.show_span_context(),
             self.viewer.show_source_locations(),
+            self.show_detail,
         )
         .style(bar_style);
 
         frame.render_widget(Paragraph::new(title).style(bar_style), title_area);
-        if let Some(detail) = self.viewer.selected_detail() {
+        if self.show_detail
+            && let Some(detail) = self.viewer.selected_detail()
+        {
             let [trace_area, detail_area] =
                 Layout::vertical([Constraint::Percentage(52), Constraint::Percentage(48)])
                     .areas(trace_area);
@@ -124,6 +131,10 @@ impl App {
             frame.render_widget(&mut self.viewer, trace_area);
         }
         frame.render_widget(Paragraph::new(status).style(bar_style), status_area);
+
+        if self.show_help {
+            render_help(frame);
+        }
     }
 
     async fn handle_event(&mut self) -> Result<()> {
@@ -135,6 +146,12 @@ impl App {
         match action_for_event(&event) {
             Some(Action::Quit) => self.cancellation_token.cancel(),
             Some(Action::CycleLevel) => self.cycle_level(),
+            Some(Action::ClearFilter) => self.clear_filter(),
+            Some(Action::ToggleHelp) => self.show_help = !self.show_help,
+            Some(Action::ToggleDetail) => {
+                self.show_detail = !self.show_detail;
+                self.detail_scroll = 0;
+            }
             Some(Action::ToggleSourceLocations) => {
                 let visible = self.viewer.toggle_source_locations();
                 info!(source_locations = visible, "toggled source locations");
@@ -144,12 +161,10 @@ impl App {
                 info!(span_context = visible, "toggled compact span context");
             }
             Some(Action::SelectNext) => {
-                self.viewer.select_next();
-                self.detail_scroll = 0;
+                self.select_next();
             }
             Some(Action::SelectPrevious) => {
-                self.viewer.select_previous();
-                self.detail_scroll = 0;
+                self.select_previous();
             }
             Some(Action::ClearSelection) => {
                 self.viewer.clear_selection();
@@ -175,15 +190,45 @@ impl App {
 
     fn cycle_level(&mut self) {
         self.min_level = match self.min_level {
-            Level::ERROR => Level::WARN,
-            Level::WARN => Level::INFO,
-            Level::INFO => Level::DEBUG,
-            Level::DEBUG => Level::TRACE,
-            Level::TRACE => Level::ERROR,
+            None => Some(Level::ERROR),
+            Some(Level::ERROR) => Some(Level::WARN),
+            Some(Level::WARN) => Some(Level::INFO),
+            Some(Level::INFO) => Some(Level::DEBUG),
+            Some(Level::DEBUG) => Some(Level::TRACE),
+            Some(Level::TRACE) => Some(Level::ERROR),
         };
-        self.viewer
-            .set_filter(TraceFilter::all().with_min_level(self.min_level));
-        info!(visible_level = %self.min_level, "updated display filter");
+        self.apply_filter();
+        if let Some(min_level) = self.min_level {
+            info!(visible_level = %min_level, "updated display filter");
+        }
+    }
+
+    fn clear_filter(&mut self) {
+        self.min_level = None;
+        self.apply_filter();
+        info!("cleared display filter");
+    }
+
+    fn select_next(&mut self) {
+        self.viewer.select_next();
+        self.viewer.reveal_selection();
+        self.show_detail = true;
+        self.detail_scroll = 0;
+    }
+
+    fn select_previous(&mut self) {
+        self.viewer.select_previous();
+        self.viewer.reveal_selection();
+        self.show_detail = true;
+        self.detail_scroll = 0;
+    }
+
+    fn apply_filter(&mut self) {
+        let filter = self
+            .min_level
+            .map(|level| TraceFilter::all().with_min_level(level))
+            .unwrap_or_else(TraceFilter::all);
+        self.viewer.set_filter(filter);
     }
 }
 
@@ -191,6 +236,9 @@ impl App {
 enum Action {
     Quit,
     CycleLevel,
+    ClearFilter,
+    ToggleHelp,
+    ToggleDetail,
     ToggleSourceLocations,
     ToggleSpanContext,
     SelectNext,
@@ -213,7 +261,10 @@ fn action_for_event(event: &Event) -> Option<Action> {
 
     match code {
         KeyCode::Char('q') => Some(Action::Quit),
+        KeyCode::Char('?') => Some(Action::ToggleHelp),
+        KeyCode::Char(' ') | KeyCode::Enter => Some(Action::ToggleDetail),
         KeyCode::Char('l') => Some(Action::CycleLevel),
+        KeyCode::Char('x') => Some(Action::ClearFilter),
         KeyCode::Char('c') => Some(Action::ToggleSpanContext),
         KeyCode::Char('s') => Some(Action::ToggleSourceLocations),
         KeyCode::Char('j') => Some(Action::SelectNext),
@@ -239,10 +290,11 @@ fn log_ignored_event(event: Event) {
 }
 
 fn demo_status(
-    min_level: Level,
+    min_level: Option<Level>,
     status: TraceViewStatus,
     show_span_context: bool,
     show_source_locations: bool,
+    show_detail: bool,
 ) -> Line<'static> {
     let mode = match status.scroll_mode {
         TraceScrollMode::FollowTail => "tail",
@@ -252,24 +304,70 @@ fn demo_status(
         .selected_visible_index
         .map(|index| format!("selected {}/{}", index + 1, status.visible_events))
         .unwrap_or_else(|| "selected none".to_owned());
+    let filter = min_level
+        .map(|level| format!("{level}+"))
+        .unwrap_or_else(|| "all".to_owned());
 
-    let source = if show_source_locations {
-        "source on"
-    } else {
-        "source off"
-    };
     let spans = if show_span_context {
-        "spans on"
+        "spans:on"
     } else {
-        "spans off"
+        "spans:off"
+    };
+    let source = if show_source_locations {
+        "source:on"
+    } else {
+        "source:off"
+    };
+    let detail = if show_detail {
+        "detail:on"
+    } else {
+        "detail:off"
     };
 
+    // Status and help text are demo-owned chrome. The library provides structured state through
+    // TraceViewStatus; applications choose their own wording and keybindings.
     Line::from(format!(
-        "q quit | l level {min_level}+ | c {spans} | s {source} | j/k select | Esc clear | u/d scroll | b/f page | g/G jump | [/] detail | {mode} | {selected} | visible {}/{} | lost {}",
+        "q quit | ? help | l level | x clear | filter {filter} | {mode} | {selected} | visible {}/{} | lost {} | {detail} | {spans} | {source}",
         status.visible_events,
         status.store.retained_events,
         status.store.lost_events()
     ))
+}
+
+fn render_help(frame: &mut ratatui::Frame<'_>) {
+    let area = centered_rect(frame.area(), 64, 17);
+    let block = Block::bordered()
+        .title(" demo controls ")
+        .border_style(Style::default().fg(Color::Cyan));
+    let help = Text::from(vec![
+        Line::from("q quit        ? toggle help"),
+        Line::from("l cycle level x clear display filter"),
+        Line::from("j/k select    Esc clear selection"),
+        Line::from("Enter detail  Space detail"),
+        Line::from("u/d scroll    Up/Down scroll"),
+        Line::from("b/f page      PgUp/PgDn page"),
+        Line::from("g/G jump      Home/End jump"),
+        Line::from("c spans       s source locations"),
+        Line::from("[/] detail    scroll selected detail"),
+        Line::from(""),
+        Line::from("The demo owns this chrome and key map."),
+        Line::from("TraceViewer owns filtering, selection, scrolling, and status state."),
+    ]);
+    let paragraph = Paragraph::new(help).block(block).alignment(Alignment::Left);
+
+    frame.render_widget(Clear, area);
+    frame.render_widget(paragraph, area);
+}
+
+fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
+    let width = width.min(area.width);
+    let height = height.min(area.height);
+    Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    }
 }
 
 async fn generate_traces(token: CancellationToken) {

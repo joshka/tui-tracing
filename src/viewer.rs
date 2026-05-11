@@ -191,6 +191,29 @@ impl TraceViewer {
             previous_selected_event_id(&visible_events, self.selected_event_id);
     }
 
+    /// Scroll enough to keep the selected event visible.
+    ///
+    /// This uses the height from the most recent render. Before the first render,
+    /// the viewer assumes a one-line viewport. Calling this leaves follow-tail mode
+    /// unless the selected event is already visible within the current viewport.
+    pub fn reveal_selection(&mut self) {
+        let snapshot = self.store.snapshot();
+        let Some(selected_index) = self.selected_visible_index(&snapshot) else {
+            return;
+        };
+        let selected_index = u16::try_from(selected_index).unwrap_or(u16::MAX);
+        let viewport_height = self.page_scroll_lines();
+        let viewport_bottom = self.scroll_top.saturating_add(viewport_height);
+
+        if selected_index < self.scroll_top {
+            self.follow_tail = false;
+            self.scroll_top = selected_index;
+        } else if selected_index >= viewport_bottom {
+            self.follow_tail = false;
+            self.scroll_top = selected_index.saturating_sub(viewport_height.saturating_sub(1));
+        }
+    }
+
     /// Clear the selected event.
     pub fn clear_selection(&mut self) {
         self.selected_event_id = None;
