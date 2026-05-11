@@ -21,6 +21,9 @@ clippy:
 doc:
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps
 
+docs-rs:
+    RUSTDOCFLAGS="-D warnings" cargo +nightly docs-rs
+
 markdown:
     markdownlint-cli2 README.md "docs/**/*.md"
 
@@ -33,7 +36,7 @@ audit:
 machete:
     cargo machete
 
-ci: fmt-check check test clippy doc markdown package audit machete
+ci: fmt-check check test clippy doc docs-rs markdown package audit machete
 
 demo-gif:
     mkdir -p target/vhs

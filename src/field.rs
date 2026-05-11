@@ -1,8 +1,23 @@
-//! Structured field values captured from `tracing` spans and events.
+//! Structured field values captured from [`tracing`] spans and events.
 //!
 //! This module owns the crate's field representation. Capture layers convert
-//! `tracing` visitor callbacks into [`FieldValue`] values, and display code later
+//! [`tracing`] visitor callbacks into [`FieldValue`] values, and display code later
 //! formats those values without needing access to the original subscriber context.
+//!
+//! # Common Workflow
+//!
+//! Most applications do not construct field maps directly. [`crate::TraceLayer`]
+//! records fields into [`FieldMap`], [`crate::TraceStore`] retains them, and
+//! [`crate::TraceViewer`] formats them.
+//!
+//! Read this module when you need to inspect retained [`crate::EventRecord`] or
+//! [`crate::SpanRecord`] values yourself.
+//!
+//! # Related Modules
+//!
+//! - [`crate::record`] stores captured fields on events and spans.
+//! - [`crate::filter`] searches field names and values at display time.
+//! - [`crate::viewer`] renders fields in compact rows and selected-event detail.
 
 use std::error::Error;
 use std::fmt;
@@ -13,15 +28,23 @@ use tracing_subscriber::field::VisitOutput;
 
 /// Ordered map of structured tracing fields.
 ///
-/// Field order follows the order in which `tracing` records the fields. The display
-/// layer keeps that order so output remains close to `tracing_subscriber::fmt`.
+/// Field order follows the order in which [`tracing`] records the fields. The display
+/// layer keeps that order so output remains close to
+/// [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt).
+///
+/// The map is owned data. Captured field values never borrow from the original
+/// tracing call site, so snapshots can outlive the subscriber callback that
+/// produced them.
 pub type FieldMap = IndexMap<String, FieldValue>;
 
 /// A structured field value captured from a tracing span or event.
 ///
-/// The original values supplied to `tracing` may borrow local data, so the store owns
+/// The original values supplied to [`tracing`] may borrow local data, so the store owns
 /// all captured values. Values that do not have a more precise visitor callback are
 /// stored as [`FieldValue::Debug`].
+///
+/// `FieldValue` is intended for inspection, filtering, and display. It is not a
+/// lossless serialization of arbitrary user values.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum FieldValue {

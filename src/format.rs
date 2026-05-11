@@ -1,6 +1,7 @@
-//! Formatting captured records into Ratatui text.
+//! Formatting captured records into [`ratatui`] text.
 //!
-//! This module owns the default `tracing_subscriber::fmt`-inspired presentation.
+//! This module owns the default
+//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt)-inspired presentation.
 //! It is deliberately event-stream oriented; span hierarchy is rendered as compact
 //! inline context.
 
@@ -14,10 +15,20 @@ use crate::store::TraceSnapshot;
 
 const OVERFLOW_MARKER: &str = "...";
 
-/// Options for rendering captured trace records.
+/// Options for rendering compact event rows.
+///
+/// These options control presentation only. They do not change capture,
+/// retention, display-time filtering, or selected-event detail content.
+///
+/// Applications can mutate this struct directly and pass it to
+/// [`crate::TraceViewer::set_format_options`], or use the viewer convenience
+/// methods for common toggles.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FormatOptions {
     /// Timestamp format used for each compact event row.
+    ///
+    /// Defaults to [`TimestampFormat::ShortLocal`] to preserve horizontal space in
+    /// TUI panes.
     pub timestamp_format: TimestampFormat,
 
     /// Whether to render compact span context after the event target.
@@ -28,9 +39,15 @@ pub struct FormatOptions {
     pub show_span_context: bool,
 
     /// Whether to render event target before the event message.
+    ///
+    /// Defaults to `true`. Disabling it makes rows narrower but removes the most
+    /// direct module or subsystem cue.
     pub show_target: bool,
 
     /// Whether to render source file and line when present.
+    ///
+    /// Defaults to `false`. Source locations are still available in
+    /// [`crate::TraceEventDetail`] when compact rows hide them.
     pub show_location: bool,
 }
 
@@ -61,7 +78,11 @@ pub enum TimestampFormat {
     /// Custom [`chrono`] format string.
     ///
     /// Invalid format strings do not fail rendering; they are rendered according
-    /// to `chrono`'s formatting behavior.
+    /// to [`chrono`]'s formatting behavior.
+    ///
+    /// Use this when application layout has a specific timestamp convention. Keep
+    /// the resulting width in mind because compact row truncation has less room
+    /// for target, message, and fields when timestamps are long.
     Custom(String),
 }
 

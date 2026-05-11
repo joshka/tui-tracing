@@ -1,3 +1,24 @@
+//! Optional span busy/idle timing.
+//!
+//! [`TimingLayer`] records timing data into span extensions. [`crate::TraceLayer`]
+//! can then copy the latest [`Timing`] into retained [`crate::SpanRecord`] values.
+//!
+//! # Common Workflow
+//!
+//! Install `TimingLayer` in the same subscriber stack as `TraceLayer` when selected
+//! event detail should include span busy and idle durations.
+//!
+//! # Lifecycle And Side Effects
+//!
+//! The layer stores timing state in [`tracing`] span extensions. It has no background
+//! task and no drop-time cleanup. Timing stops changing once a span closes.
+//!
+//! # Related Modules
+//!
+//! - [`crate::layer`] copies timing values into retained span records.
+//! - [`crate::record`] stores optional timing data on [`crate::SpanRecord`].
+//! - [`crate::viewer`] displays timing in selected-event detail.
+
 use std::time::Duration;
 
 use quanta::Instant;
@@ -11,6 +32,28 @@ use tracing_subscriber::registry::LookupSpan;
 ///
 /// The layer stores [`Timing`] in each span's extensions. [`TraceLayer`](crate::TraceLayer)
 /// reads that extension and copies the latest timing values into retained span records.
+///
+/// `TimingLayer` should be installed alongside [`crate::TraceLayer`]. By itself it
+/// only updates span extensions; it does not retain or render anything.
+///
+/// ```
+/// use tracing::subscriber;
+/// use tracing_subscriber::Registry;
+/// use tracing_subscriber::layer::SubscriberExt;
+/// use tui_tracing::{TimingLayer, TraceLayer};
+///
+/// let (trace_layer, store) = TraceLayer::new();
+/// let subscriber = Registry::default().with(TimingLayer).with(trace_layer);
+///
+/// subscriber::with_default(subscriber, || {
+///     let span = tracing::info_span!("request");
+///     let _guard = span.enter();
+///     tracing::info!("handled request");
+/// });
+///
+/// let snapshot = store.snapshot();
+/// assert_eq!(snapshot.events.len(), 1);
+/// ```
 #[derive(Debug, Default)]
 pub struct TimingLayer;
 
@@ -18,6 +61,9 @@ pub struct TimingLayer;
 ///
 /// Busy time is accumulated while the span is entered. Idle time is accumulated
 /// while the span exists but is not currently entered.
+///
+/// Timing values are copied into [`crate::SpanRecord`] snapshots. They are cheap
+/// to copy and contain no handles back to the subscriber.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timing {
     state: TimingState,
@@ -35,6 +81,9 @@ impl Default for Timing {
 }
 
 /// Current lifecycle state for span timing.
+///
+/// The state describes the latest known span timing lifecycle, not the
+/// application-level meaning of the span.
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum TimingState {
     /// The span is closed.
@@ -95,6 +144,9 @@ where
 
 impl Timing {
     /// Create a timing record in the idle state.
+    ///
+    /// Applications normally do not call this directly; [`TimingLayer`] creates
+    /// timing records for new spans.
     pub fn new() -> Self {
         Self {
             state: TimingState::Idle,
@@ -110,6 +162,9 @@ impl Timing {
     ///
     /// If this is called while the span is idle, the idle time will be updated. If this is called
     /// while the span is busy, the busy time will be updated.
+    ///
+    /// This method is public for tests and custom subscriber integrations. Normal
+    /// applications should let [`TimingLayer`] call it from subscriber callbacks.
     pub fn enter(&mut self) {
         self.record();
         self.enter_count += 1;
@@ -120,6 +175,9 @@ impl Timing {
     ///
     /// If this is called while the span is busy, the busy time will be updated. If this is called
     /// while the span is idle, the idle time will be updated.
+    ///
+    /// This method is public for tests and custom subscriber integrations. Normal
+    /// applications should let [`TimingLayer`] call it from subscriber callbacks.
     pub fn exit(&mut self) {
         self.record();
         self.exit_count += 1;

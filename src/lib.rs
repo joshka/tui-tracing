@@ -1,9 +1,16 @@
-//! Runtime tracing viewer primitives for Ratatui applications.
+//! # tui-tracing
 //!
-//! `tui-tracing` captures native [`tracing`] spans and events into a runtime store
-//! and renders that store as a `tracing_subscriber::fmt`-style event stream inside
-//! a TUI. It is intentionally tracing-first: it does not adapt through the `log`
-//! crate, and display-time filtering is separate from subscriber capture filtering.
+//! `tui-tracing` provides a runtime store and [`ratatui`] widget for displaying
+//! [`tracing`] events inside a [`ratatui`]-based application. It captures native
+//! tracing spans and events, retains them in [`TraceStore`], and renders them as a
+//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt)-style event stream with
+//! [`TraceViewer`]. It is intentionally tracing-first: it does not adapt through the `log` crate,
+//! and display-time filtering is separate from subscriber capture filtering.
+//!
+//! Use this crate when an application needs tracing diagnostics available inside
+//! its own [`ratatui`] UI at runtime. The primary path is:
+//! capture with [`TraceLayer`], retain in [`TraceStore`], filter with
+//! [`TraceFilter`], and render with [`TraceViewer`].
 //!
 //! # Start Here
 //!
@@ -26,6 +33,9 @@
 //! terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).unwrap();
 //! ```
 //!
+//! For a runnable version of this workflow, run `cargo run --example basic`. For
+//! the interactive demo, run `cargo run --example demo`.
+//!
 //! # Core Concepts
 //!
 //! - [`TraceLayer`] captures structured tracing records.
@@ -37,9 +47,40 @@
 //! - [`TraceEventDetail`] renders full detail for one selected event.
 //! - [`TimingLayer`] optionally records span busy/idle timing.
 //!
+//! # Module Map
+//!
+//! - [`layer`] owns [`tracing_subscriber`] integration.
+//! - [`store`] owns retained runtime data and storage counters.
+//! - [`viewer`] owns Ratatui rendering state.
+//! - [`filter`] owns display-time matching.
+//! - [`record`] owns captured event and span record shapes.
+//! - [`field`] owns structured field values.
+//!
 //! Span trees, timing summaries, and aggregation are secondary views built on the
-//! same stored records. The default view stays event-stream-first because that is
-//! the most common diagnostic path while an application is running.
+//! same stored records. The default view stays event-stream-first because recent
+//! event output is the diagnostic surface users already know from
+//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt).
+//!
+//! # Runtime And Lifecycle
+//!
+//! [`TraceLayer`] is a [`tracing_subscriber::Layer`]. It captures records only
+//! while installed in the active subscriber. [`TraceStore`] is an in-memory,
+//! cloneable handle backed by synchronization, so capture and rendering can run on
+//! different threads.
+//!
+//! [`TraceViewer`] is application state. It intentionally implements
+//! [`ratatui::widgets::Widget`] for `&mut TraceViewer` because scrollback and
+//! follow-tail state depend on the render area and can only be clamped correctly
+//! during rendering.
+//!
+//! This crate does not install a global subscriber by itself, does not spawn
+//! background tasks, and does not manage terminal raw mode. Those lifecycle
+//! concerns remain owned by the application.
+//!
+//! # Feature Flags
+//!
+//! This crate currently has no feature flags. All public APIs are available with
+//! default dependencies.
 //!
 //! # Main Screen
 //!
@@ -50,8 +91,8 @@
 //! The main screen is an event stream, not a span tree. Span nesting is important
 //! runtime context, but it should appear as compact inline context first and as
 //! full detail only when the user selects or expands an event. This keeps the
-//! common diagnostic path close to `tracing_subscriber::fmt` output while still
-//! preserving structured tracing data for richer views.
+//! common diagnostic path close to [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt) output
+//! while still preserving structured tracing data for richer views.
 //!
 //! The first visible surface should cover:
 //!
@@ -69,8 +110,8 @@
 //! ```
 //!
 //! Compact rows use [`TimestampFormat::ShortLocal`] by default because full
-//! timestamps are usually too wide for an in-app diagnostics pane. Rows prioritize
-//! level, target, message, and fields. Inline span context is available through
+//! timestamps consume width needed for target, message, and fields. Inline span
+//! context is available through
 //! [`FormatOptions`] and [`TraceViewer::set_show_span_context`], but is hidden by
 //! default so nested spans do not dominate the event stream. A row should remain
 //! useful when an event has no `message` field because field-only events are valid
