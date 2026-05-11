@@ -77,7 +77,8 @@
 //! - set or clear the minimum visible level;
 //! - filter by target, module, span name, text, field name, or field value;
 //! - scroll older or newer;
-//! - jump back to the newest visible event;
+//! - move by rendered pages;
+//! - jump to the oldest or newest visible event;
 //! - select previous or next visible event;
 //! - expand selected event details;
 //! - toggle source locations;

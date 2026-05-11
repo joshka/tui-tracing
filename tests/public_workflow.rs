@@ -455,6 +455,177 @@ fn viewer_stays_in_scrollback_until_returning_to_tail() {
     });
 }
 
+#[test]
+fn viewer_page_controls_do_not_move_when_events_fit_viewport() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..2 {
+            tracing::info!("event-{index}");
+        }
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1"]
+    );
+
+    viewer.page_up();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1"]
+    );
+
+    viewer.page_down();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1"]
+    );
+}
+
+#[test]
+fn viewer_page_controls_do_not_move_when_events_equal_viewport() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..3 {
+            tracing::info!("event-{index}");
+        }
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1", "event-2"]
+    );
+
+    viewer.page_up();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1", "event-2"]
+    );
+
+    viewer.page_down();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1", "event-2"]
+    );
+}
+
+#[test]
+fn viewer_page_controls_move_by_rendered_viewport_height() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..7 {
+            tracing::info!("event-{index}");
+        }
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-4", "event-5", "event-6"]
+    );
+
+    viewer.page_up();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-1", "event-2", "event-3"]
+    );
+
+    viewer.page_down();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-4", "event-5", "event-6"]
+    );
+}
+
+#[test]
+fn viewer_jump_controls_move_to_oldest_and_newest_visible_rows() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..7 {
+            tracing::info!("event-{index}");
+        }
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    render_viewer(&mut viewer, 100, 3);
+
+    viewer.jump_to_oldest();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1", "event-2"]
+    );
+
+    viewer.jump_to_newest();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-4", "event-5", "event-6"]
+    );
+}
+
+#[test]
+fn viewer_page_and_jump_controls_are_sensible_before_first_render() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..7 {
+            tracing::info!("event-{index}");
+        }
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    viewer.page_up();
+
+    let status = viewer.status();
+    assert_eq!(status.scroll_mode, TraceScrollMode::Scrollback);
+    assert_eq!(status.scroll_top, 0);
+
+    viewer.jump_to_oldest();
+    assert_eq!(
+        render_viewer_event_rows(&mut viewer, 100, 3),
+        ["event-0", "event-1", "event-2"]
+    );
+}
+
+#[test]
+fn viewer_jump_oldest_does_not_move_when_new_events_arrive() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..7 {
+            tracing::info!("event-{index}");
+        }
+
+        let mut viewer = TraceViewer::new(store);
+        render_viewer(&mut viewer, 100, 3);
+        viewer.jump_to_oldest();
+        assert_eq!(
+            render_viewer_event_rows(&mut viewer, 100, 3),
+            ["event-0", "event-1", "event-2"]
+        );
+
+        for index in 7..10 {
+            tracing::info!("event-{index}");
+        }
+
+        assert_eq!(
+            render_viewer_event_rows(&mut viewer, 100, 3),
+            ["event-0", "event-1", "event-2"]
+        );
+    });
+}
+
 fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
     buffer
         .content()
@@ -471,6 +642,41 @@ fn render_viewer(viewer: &mut TraceViewer, width: u16, height: u16) -> String {
         .draw(|frame| frame.render_widget(viewer, frame.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
+}
+
+fn render_viewer_event_rows(viewer: &mut TraceViewer, width: u16, height: u16) -> Vec<String> {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| frame.render_widget(viewer, frame.area()))
+        .unwrap();
+
+    buffer_rows(terminal.backend().buffer())
+        .into_iter()
+        .filter_map(|row| event_label(&row))
+        .collect()
+}
+
+fn buffer_rows(buffer: &ratatui::buffer::Buffer) -> Vec<String> {
+    let area = buffer.area;
+    (area.y..area.y + area.height)
+        .map(|y| {
+            (area.x..area.x + area.width)
+                .filter_map(|x| buffer.cell((x, y)).map(|cell| cell.symbol()))
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect()
+}
+
+fn event_label(row: &str) -> Option<String> {
+    let start = row.find("event-")?;
+    let label = row[start..]
+        .split_whitespace()
+        .next()
+        .expect("split_whitespace yields the matched event label");
+    Some(label.to_owned())
 }
 
 fn selected_message(viewer: &TraceViewer) -> Option<FieldValue> {

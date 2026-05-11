@@ -112,9 +112,12 @@ impl App {
             Some(Action::SelectNext) => self.viewer.select_next(),
             Some(Action::SelectPrevious) => self.viewer.select_previous(),
             Some(Action::ClearSelection) => self.viewer.clear_selection(),
-            Some(Action::ScrollUp(lines)) => self.viewer.scroll_up(lines),
-            Some(Action::ScrollDown(lines)) => self.viewer.scroll_down(lines),
-            Some(Action::FollowTail) => self.viewer.follow_tail(),
+            Some(Action::ScrollUp) => self.viewer.scroll_up(1),
+            Some(Action::ScrollDown) => self.viewer.scroll_down(1),
+            Some(Action::PageUp) => self.viewer.page_up(),
+            Some(Action::PageDown) => self.viewer.page_down(),
+            Some(Action::JumpOldest) => self.viewer.jump_to_oldest(),
+            Some(Action::JumpNewest) => self.viewer.jump_to_newest(),
             None => log_ignored_event(event),
         }
 
@@ -142,9 +145,12 @@ enum Action {
     SelectNext,
     SelectPrevious,
     ClearSelection,
-    ScrollUp(u16),
-    ScrollDown(u16),
-    FollowTail,
+    ScrollUp,
+    ScrollDown,
+    PageUp,
+    PageDown,
+    JumpOldest,
+    JumpNewest,
 }
 
 fn action_for_event(event: &Event) -> Option<Action> {
@@ -158,12 +164,12 @@ fn action_for_event(event: &Event) -> Option<Action> {
         KeyCode::Char('j') => Some(Action::SelectNext),
         KeyCode::Char('k') => Some(Action::SelectPrevious),
         KeyCode::Esc => Some(Action::ClearSelection),
-        KeyCode::Char('u') | KeyCode::Up => Some(Action::ScrollUp(1)),
-        KeyCode::Char('d') | KeyCode::Down => Some(Action::ScrollDown(1)),
-        KeyCode::Char('b') | KeyCode::PageUp => Some(Action::ScrollUp(10)),
-        KeyCode::Char('f') | KeyCode::PageDown => Some(Action::ScrollDown(10)),
-        KeyCode::Char('g') | KeyCode::Home => Some(Action::ScrollUp(u16::MAX)),
-        KeyCode::Char('G') | KeyCode::End => Some(Action::FollowTail),
+        KeyCode::Char('u') | KeyCode::Up => Some(Action::ScrollUp),
+        KeyCode::Char('d') | KeyCode::Down => Some(Action::ScrollDown),
+        KeyCode::Char('b') | KeyCode::PageUp => Some(Action::PageUp),
+        KeyCode::Char('f') | KeyCode::PageDown => Some(Action::PageDown),
+        KeyCode::Char('g') | KeyCode::Home => Some(Action::JumpOldest),
+        KeyCode::Char('G') | KeyCode::End => Some(Action::JumpNewest),
         _ => None,
     }
 }
