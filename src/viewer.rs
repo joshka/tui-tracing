@@ -137,6 +137,32 @@ impl TraceViewer {
         self.format = format;
     }
 
+    /// Return whether compact event rows include span context.
+    ///
+    /// Span context is hidden by default because it can dominate compact rows.
+    /// Selected-event detail still includes the full span stack regardless of this
+    /// setting.
+    pub fn show_span_context(&self) -> bool {
+        self.format.show_span_context
+    }
+
+    /// Set whether compact event rows include span context.
+    ///
+    /// This updates display formatting only. It does not change captured records,
+    /// active filters, selection, or scroll position.
+    pub fn set_show_span_context(&mut self, show: bool) {
+        self.format.show_span_context = show;
+    }
+
+    /// Toggle span context in compact event rows and return the new value.
+    ///
+    /// This is a convenience for application keybindings. Selected-event detail
+    /// remains complete whether compact rows show span context or not.
+    pub fn toggle_span_context(&mut self) -> bool {
+        self.format.show_span_context = !self.format.show_span_context;
+        self.format.show_span_context
+    }
+
     /// Return whether compact event rows include source locations.
     ///
     /// Source locations are hidden by default because they are often too wide for
@@ -422,12 +448,12 @@ impl TraceEventDetail {
     pub fn text(&self) -> Text<'static> {
         let mut lines = vec![
             heading("Event"),
-            detail_line("time", self.event.timestamp.to_rfc3339()),
-            detail_line("level", self.event.level.0.to_string()),
-            detail_line("target", self.event.target.clone()),
-            metadata_line("  module", self.event.module_path.as_deref()),
+            metadata_line("time", self.event.timestamp.to_rfc3339()),
+            metadata_line("level", self.event.level.0.to_string()),
+            metadata_line("target", self.event.target.clone()),
+            optional_metadata_line("  module", self.event.module_path.as_deref()),
             location_line("  location", self.event.file.as_deref(), self.event.line),
-            detail_line(
+            message_line(
                 "message",
                 self.event
                     .fields
@@ -486,30 +512,30 @@ impl TraceSpanDetail {
 }
 
 fn push_fields(lines: &mut Vec<Line<'static>>, heading: &'static str, fields: &FieldMap) {
-    lines.push(heading_line(heading));
+    lines.push(span_fields_heading(heading));
     if fields.is_empty() {
-        lines.push(muted_line("  <none>"));
+        lines.push(muted_line("        <none>"));
         return;
     }
 
     for (name, value) in fields {
-        lines.push(detail_line(name, value.to_string()));
+        lines.push(span_field_line(name, value.to_string()));
     }
 }
 
 fn push_event_fields(lines: &mut Vec<Line<'static>>, fields: &FieldMap) {
-    lines.push(heading_line("Fields"));
+    lines.push(event_fields_heading("  fields"));
     let mut pushed = false;
     for (name, value) in fields {
         if name == "message" {
             continue;
         }
-        lines.push(detail_line(name, value.to_string()));
+        lines.push(event_field_line(name, value.to_string()));
         pushed = true;
     }
 
     if !pushed {
-        lines.push(muted_line("  <none>"));
+        lines.push(muted_line("     <none>"));
     }
 }
 
@@ -534,27 +560,22 @@ fn push_span_stack(lines: &mut Vec<Line<'static>>, span_stack: &[TraceSpanDetail
 
 fn push_span(lines: &mut Vec<Line<'static>>, index: usize, span: &SpanRecord) {
     lines.push(Line::from(vec![
-        Span::styled(
-            format!("  {index}. "),
-            Style::default().add_modifier(Modifier::DIM),
-        ),
-        Span::styled(
-            span.name.clone(),
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(format!("  {index}. "), span_index_style()),
+        Span::styled(span.name.clone(), span_name_style()),
     ]));
-    lines.push(indented_detail_line("id", span.id.to_string()));
-    lines.push(indented_detail_line("level", span.level.0.to_string()));
-    lines.push(indented_detail_line("target", span.target.clone()));
-    lines.push(metadata_line("     module", span.module_path.as_deref()));
+    lines.push(span_metadata_line("id", span.id.to_string()));
+    lines.push(span_metadata_line("level", span.level.0.to_string()));
+    lines.push(span_metadata_line("target", span.target.clone()));
+    lines.push(optional_span_metadata_line(
+        "     module",
+        span.module_path.as_deref(),
+    ));
     lines.push(location_line(
         "     location",
         span.file.as_deref(),
         span.line,
     ));
-    lines.push(indented_detail_line(
+    lines.push(span_metadata_line(
         "lifecycle",
         if span.close_time.is_some() {
             "closed"
@@ -564,7 +585,7 @@ fn push_span(lines: &mut Vec<Line<'static>>, index: usize, span: &SpanRecord) {
     ));
 
     if let Some(timing) = span.timing {
-        lines.push(indented_detail_line(
+        lines.push(span_metadata_line(
             "timing",
             format!(
                 "state={:?} busy={:?} idle={:?} total={:?} enters={} exits={}",
@@ -581,46 +602,101 @@ fn push_span(lines: &mut Vec<Line<'static>>, index: usize, span: &SpanRecord) {
 }
 
 fn heading(label: &'static str) -> Line<'static> {
-    Line::from(label).style(
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
+    Line::from(label).style(section_heading_style())
+}
+
+fn event_fields_heading(label: &'static str) -> Line<'static> {
+    Line::from(label).style(subsection_heading_style())
+}
+
+fn span_fields_heading(label: &'static str) -> Line<'static> {
+    Line::from(label).style(subsection_heading_style())
+}
+
+fn metadata_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
+    field_line(
+        "  ",
+        label,
+        value,
+        metadata_label_style(),
+        metadata_value_style(),
     )
 }
 
-fn heading_line(label: &'static str) -> Line<'static> {
-    Line::from(label).style(Style::default().fg(Color::Yellow))
+fn optional_metadata_line(label: &'static str, value: Option<&str>) -> Line<'static> {
+    labeled_line(
+        label,
+        value.unwrap_or("<unknown>").to_owned(),
+        metadata_label_style(),
+        metadata_value_style_for(value),
+    )
 }
 
-fn detail_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
-    field_line("  ", label, value)
+fn message_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
+    let value = value.into();
+    let value_style = if value == "<none>" {
+        missing_value_style()
+    } else {
+        value_style()
+    };
+    field_line("  ", label, value, message_label_style(), value_style)
 }
 
-fn indented_detail_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
-    field_line("     ", label, value)
+fn event_field_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
+    field_line(
+        "     ",
+        label,
+        value,
+        event_field_label_style(),
+        value_style(),
+    )
+}
+
+fn span_metadata_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
+    field_line(
+        "     ",
+        label,
+        value,
+        metadata_label_style(),
+        metadata_value_style(),
+    )
+}
+
+fn optional_span_metadata_line(label: &'static str, value: Option<&str>) -> Line<'static> {
+    labeled_line(
+        label,
+        value.unwrap_or("<unknown>").to_owned(),
+        metadata_label_style(),
+        metadata_value_style_for(value),
+    )
+}
+
+fn span_field_line(label: impl Into<String>, value: impl Into<String>) -> Line<'static> {
+    field_line(
+        "        ",
+        label,
+        value,
+        span_field_label_style(),
+        value_style(),
+    )
 }
 
 fn field_line(
     prefix: &'static str,
     label: impl Into<String>,
     value: impl Into<String>,
+    label_style: Style,
+    value_style: Style,
 ) -> Line<'static> {
     Line::from(vec![
-        Span::styled(
-            format!("{prefix}{}:", label.into()),
-            Style::default().fg(Color::Blue),
-        ),
+        Span::styled(format!("{prefix}{}:", label.into()), label_style),
         Span::raw(" "),
-        Span::raw(value.into()),
+        Span::styled(value.into(), value_style),
     ])
 }
 
 fn muted_line(text: impl Into<String>) -> Line<'static> {
-    Line::from(text.into()).style(Style::default().add_modifier(Modifier::DIM))
-}
-
-fn metadata_line(label: &'static str, value: Option<&str>) -> Line<'static> {
-    labeled_line(label, value.unwrap_or("<unknown>").to_owned())
+    Line::from(text.into()).style(missing_value_style())
 }
 
 fn location_line(label: &'static str, file: Option<&str>, line: Option<u32>) -> Line<'static> {
@@ -630,13 +706,85 @@ fn location_line(label: &'static str, file: Option<&str>, line: Option<u32>) -> 
         (None, Some(line)) => format!("<unknown>:{line}"),
         (None, None) => "<unknown>".to_owned(),
     };
-    labeled_line(label, value)
+    let style = if file.is_some() {
+        metadata_value_style()
+    } else {
+        missing_value_style()
+    };
+    labeled_line(label, value, metadata_label_style(), style)
 }
 
-fn labeled_line(label: &'static str, value: impl Into<String>) -> Line<'static> {
+fn labeled_line(
+    label: &'static str,
+    value: impl Into<String>,
+    label_style: Style,
+    value_style: Style,
+) -> Line<'static> {
     let prefix_len = label.len() - label.trim_start().len();
     let (prefix, label) = label.split_at(prefix_len);
-    field_line(prefix, label, value)
+    field_line(prefix, label, value, label_style, value_style)
+}
+
+fn section_heading_style() -> Style {
+    Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn subsection_heading_style() -> Style {
+    Style::default()
+        .fg(Color::Gray)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn metadata_label_style() -> Style {
+    Style::default().fg(Color::Gray)
+}
+
+fn metadata_value_style() -> Style {
+    Style::default()
+}
+
+fn metadata_value_style_for(value: Option<&str>) -> Style {
+    if value.is_some() {
+        metadata_value_style()
+    } else {
+        missing_value_style()
+    }
+}
+
+fn message_label_style() -> Style {
+    Style::default().fg(Color::Gray)
+}
+
+fn event_field_label_style() -> Style {
+    Style::default().fg(Color::Gray)
+}
+
+fn span_field_label_style() -> Style {
+    Style::default().fg(Color::Gray)
+}
+
+fn value_style() -> Style {
+    Style::default()
+}
+
+fn missing_value_style() -> Style {
+    Style::default()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::DIM)
+}
+
+fn span_index_style() -> Style {
+    Style::default()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::DIM)
+}
+
+fn span_name_style() -> Style {
+    Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Current scrolling mode for a [`TraceViewer`].

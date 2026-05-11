@@ -65,20 +65,25 @@
 //!
 //! ```text
 //! 12:04:31.123 INFO  app::net: connected peer=alpha latency=12ms
-//! 12:04:32.018 WARN  app::sync: sync{peer=alpha}: retrying attempt=2 error=timeout
+//! 12:04:32.018 WARN  app::sync: retrying attempt=2 error=timeout
 //! ```
 //!
 //! Compact rows use [`TimestampFormat::ShortLocal`] by default because full
-//! timestamps are usually too wide for an in-app diagnostics pane. Rows still keep
-//! the `tracing_subscriber::fmt`-style hierarchy of level, target, span context,
-//! message, and fields. A row should remain useful when an event has no `message`
-//! field because field-only events are valid tracing output.
+//! timestamps are usually too wide for an in-app diagnostics pane. Rows prioritize
+//! level, target, message, and fields. Inline span context is available through
+//! [`FormatOptions`] and [`TraceViewer::set_show_span_context`], but is hidden by
+//! default so nested spans do not dominate the event stream. A row should remain
+//! useful when an event has no `message` field because field-only events are valid
+//! tracing output.
 //! Long compact-row content is truncated before Ratatui clips the line, with an
 //! inline `...` marker showing that complete data is available in detail.
 //!
 //! Selected-event detail is the full metadata surface. It keeps the complete
 //! timestamp, level, target, module path, source location, promoted message, event
 //! fields, full span stack, span fields, lifecycle state, and timing.
+//! Detail styling uses restrained color and indentation to show ownership:
+//! metadata and fields belong to the selected event, and span fields belong to
+//! the span context around that event.
 //!
 //! The main screen should expose behavior that applications can bind to their own
 //! input model:

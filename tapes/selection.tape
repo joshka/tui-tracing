@@ -19,6 +19,8 @@ Sleep 4s
 
 Type "s"
 Sleep 2s
+Type "c"
+Sleep 2s
 Type "j"
 Sleep 1s
 Type "j"
