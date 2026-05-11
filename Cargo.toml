@@ -1,7 +1,7 @@
 [package]
 name = "tui-tracing"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.86"
 description = "Runtime tracing viewer primitives for Ratatui applications"
 repository = "https://github.com/joshka/tui-tracing"

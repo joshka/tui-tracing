@@ -1,10 +1,10 @@
+use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier};
-use ratatui::Terminal;
 use tracing::subscriber;
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
+use tracing_subscriber::layer::SubscriberExt;
 use tui_tracing::{
     EventRecord, FieldMap, FieldValue, Level, TimestampFormat, TraceEventDetail, TraceFilter,
     TraceLayer, TraceScrollMode, TraceSpanDetail, TraceStore, TraceViewer,
@@ -164,7 +164,7 @@ fn viewer_renders_field_only_events() {
 }
 
 #[test]
-fn viewer_uses_default_fmt_style_ordering() {
+fn viewer_uses_compact_default_ordering_without_span_context() {
     let store = TraceStore::default();
     let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
 
@@ -183,18 +183,45 @@ fn viewer_uses_default_fmt_style_ordering() {
     let row = first_non_empty_row(&rendered);
 
     assert!(row.starts_with(&expected_timestamp));
-    assert!(row.contains("INFO  public_workflow: request{user=\"alice\"}:"));
-    assert!(row.contains(": connected answer=42"));
-    assert_ordered(
-        row,
-        &[
-            "INFO",
-            "public_workflow:",
-            "request{user=\"alice\"}:",
-            "connected",
-            "answer=42",
-        ],
-    );
+    assert!(row.contains("INFO  public_workflow: connected answer=42"));
+    assert!(!row.contains("request{user=\"alice\"}:"));
+    assert_ordered(row, &["INFO", "public_workflow:", "connected", "answer=42"]);
+}
+
+#[test]
+fn viewer_can_enable_compact_span_context_without_rebuilding() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        let span = tracing::info_span!("request", user = "alice");
+        let _guard = span.enter();
+        tracing::info!(answer = 42, "connected");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    assert!(!viewer.show_span_context());
+    let hidden = render_viewer(&mut viewer, 140, 3);
+    assert!(!hidden.contains("request{user=\"alice\"}:"));
+
+    viewer.set_show_span_context(true);
+    assert!(viewer.show_span_context());
+    let visible = render_viewer(&mut viewer, 140, 3);
+
+    assert!(visible.contains("INFO  public_workflow: request{user=\"alice\"}:"));
+    assert!(visible.contains(": connected answer=42"));
+}
+
+#[test]
+fn viewer_toggles_compact_span_context_for_keybindings() {
+    let store = TraceStore::default();
+    let mut viewer = TraceViewer::new(store);
+
+    assert!(!viewer.show_span_context());
+    assert!(viewer.toggle_span_context());
+    assert!(viewer.show_span_context());
+    assert!(!viewer.toggle_span_context());
+    assert!(!viewer.show_span_context());
 }
 
 #[test]
@@ -213,12 +240,14 @@ fn viewer_supports_configured_timestamp_formats() {
     format.timestamp_format = TimestampFormat::Rfc3339;
     viewer.set_format_options(format);
     let rendered = render_viewer(&mut viewer, 140, 3);
-    assert!(first_non_empty_row(&rendered).starts_with(
-        &event
-            .timestamp
-            .format("%Y-%m-%dT%H:%M:%S%.6f%:z")
-            .to_string()
-    ));
+    assert!(
+        first_non_empty_row(&rendered).starts_with(
+            &event
+                .timestamp
+                .format("%Y-%m-%dT%H:%M:%S%.6f%:z")
+                .to_string()
+        )
+    );
 
     let mut viewer = TraceViewer::new(store);
     let mut format = viewer.format_options().clone();
@@ -318,6 +347,7 @@ fn viewer_marks_overflow_for_long_span_context_and_keeps_innermost_span() {
     });
 
     let mut viewer = TraceViewer::new(store);
+    viewer.set_show_span_context(true);
     let rendered = render_viewer(&mut viewer, 96, 3);
     let row = first_non_empty_row(&rendered);
 

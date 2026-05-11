@@ -15,8 +15,8 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 use parking_lot::RwLock;
 
-use crate::record::{EventId, EventRecord, SpanId, SpanRecord};
 use crate::Timing;
+use crate::record::{EventId, EventRecord, SpanId, SpanRecord};
 
 const DEFAULT_EVENT_CAPACITY: usize = 10_000;
 

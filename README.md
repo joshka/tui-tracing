@@ -19,17 +19,20 @@ at your option.
 
 The default viewer is event-stream-first. It should feel familiar to users of
 `tracing_subscriber::fmt`: colored levels, readable timestamps, messages, structured fields, and
-compact span context.
+optional compact span context.
 
 Compact rows default to a short local timestamp so they fit inside an application pane:
 
 ```text
-12:04:31.123 INFO  app::net: request{peer="alpha"}: connected latency_ms=12
+12:04:31.123 INFO  app::net: connected latency_ms=12
 ```
 
-When target, span context, message, or fields exceed the rendered width, compact rows use `...`
-to mark overflow. Span context truncates from the left so the innermost span remains visible when
-possible. The selected-event detail remains complete.
+Compact rows hide span context by default so target, message, and fields stay readable.
+Applications can enable span context with `TraceViewer::set_show_span_context` or `FormatOptions`
+when inline span names are worth the width. When target, optional span context, message, or fields
+exceed the rendered width, compact rows use `...` to mark overflow. Span context truncates from the
+left so the innermost span remains visible when possible. The selected-event detail remains
+complete.
 
 Selected-event detail keeps the complete timestamp, target, module path, source location, promoted
 message, event fields, span stack, span fields, lifecycle state, and timing data. Its layout and
@@ -101,8 +104,10 @@ Applications can move selection with `select_next`, `select_previous`, `select_f
 `select_last`, then read `selected_event` or `TraceViewer::status()` for app-owned detail views.
 For rendering full selected-event context, call `selected_detail()` and render the returned
 `TraceEventDetail` into a caller-owned pane. Compact row rendering remains fmt-like and optimized
-for scanning: short timestamp, level, target, span context, message, and fields.
+for scanning: short timestamp, level, target, message, and fields.
 `FormatOptions` can switch compact rows to full RFC 3339 timestamps or a custom Chrono format.
+`TraceViewer::set_show_span_context` enables inline span context for applications that want
+fmt-style span names in compact rows.
 `TraceViewer::set_show_source_locations` enables source file and line display in compact rows
 without rebuilding the viewer.
 Detail rendering is where full fields, source location, and span-stack context live. Its styling
@@ -120,6 +125,7 @@ own scroll state, borders, titles, or layout chrome around the detail pane.
 - `TraceFilter`: display-time event filter.
 - `FormatOptions`: compact row formatting options.
 - `TimingLayer`: optional span busy/idle timing layer.
+- `TimingState`: span timing lifecycle state.
 
 The demo in `examples/demo.rs` is intentionally small and should stay aligned with the public API
 path above.

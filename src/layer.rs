@@ -5,15 +5,15 @@
 //! with ordinary `tracing_subscriber` capture filters and then apply
 //! [`crate::TraceFilter`] at display time.
 
-use tracing::{span, Subscriber};
+use tracing::{Subscriber, span};
+use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::Layer;
 
+use crate::Timing;
 use crate::field::FieldVisitor;
 use crate::record::{SpanId, SpanRecord};
 use crate::store::TraceStore;
-use crate::Timing;
 
 /// Subscriber layer that captures structured tracing records for a TUI.
 #[derive(Debug, Default)]
@@ -100,6 +100,3 @@ where
         .map(|scope| scope.from_root().map(|span| span.id().into_u64()).collect())
         .unwrap_or_default()
 }
-
-/// Backwards-compatible alias for the original development-era name.
-pub type TracingLayer = TraceLayer;

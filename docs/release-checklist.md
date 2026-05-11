@@ -36,16 +36,16 @@ This crate is experimental, but releases should still use a repeatable quality g
    for an actual release candidate.
 
 1. Inspect the packaged README, examples, license files, and included source files.
-1. Regenerate demo GIFs when the viewer, demo, or README screenshots change:
+1. Regenerate the demo GIF when the viewer, demo, or README screenshots change:
 
    ```sh
    just demo-gif
    ```
 
-   Generated GIFs are written under `target/vhs/`, which is ignored by version control. Do not
-   commit generated GIFs. For pull request review, attach generated GIFs directly to a pull request
-   comment. Use GitHub release assets only for actual release artifacts that should become stable
-   README or docs links.
+   The generated GIF is written under `target/vhs/`, which is ignored by version control. Do not
+   commit generated GIFs. For pull request review, attach the generated GIF directly to a pull
+   request comment. Use GitHub release assets only for actual release artifacts that should become
+   stable README or docs links.
 
    VHS tapes should follow these project rules:
 
@@ -56,6 +56,9 @@ This crate is experimental, but releases should still use a repeatable quality g
    - Put inherited-environment cleanup in `just demo-gif`, not in the tape. In particular, unset
      `NO_COLOR` and related color variables before running VHS.
    - Hide setup, build, and quit commands. Show the terminal only for the demo content.
+   - Keep one README-oriented GIF per pull request. The demo should stream briefly, jump to the
+     oldest visible rows to stop tailing, select a row, and dwell on the detail pane long enough to
+     inspect.
    - Keep tapes simple. Use sleeps for fixed demo pacing unless a startup/build wait is genuinely
      needed.
 
