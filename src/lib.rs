@@ -29,7 +29,8 @@
 //! # Core Concepts
 //!
 //! - [`TraceLayer`] captures structured tracing records.
-//! - [`TraceStore`] retains those records for runtime inspection.
+//! - [`TraceStore`] retains those records for runtime inspection and exposes storage counters
+//!   through [`TraceStore::status`].
 //! - [`TraceFilter`] filters retained records at display time without losing data.
 //! - [`TraceViewer`] renders the event-stream view and owns scroll/filter state.
 //! - [`TimingLayer`] optionally records span busy/idle timing.
@@ -117,6 +118,6 @@ pub use filter::TraceFilter;
 pub use format::FormatOptions;
 pub use layer::{TraceLayer, TracingLayer};
 pub use record::{EventId, EventRecord, Level, SpanId, SpanRecord};
-pub use store::{TraceSnapshot, TraceStore};
+pub use store::{TraceSnapshot, TraceStore, TraceStoreStatus};
 pub use timing_layer::{Timing, TimingLayer};
 pub use viewer::TraceViewer;

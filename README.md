@@ -36,6 +36,11 @@ records. Nesting is important data, but it should not dominate the first diagnos
 Capture-time filtering is still useful for cost control. Display-time filtering is the main
 interaction model for diagnostics inside a running TUI.
 
+`TraceStore::status()` exposes cheap storage counters for status bars and diagnostics: configured
+capacity, retained events, retained spans, captured events, accepted events, evicted events, and
+dropped events. These counters describe storage behavior before display-time filtering, so hiding
+an event with `TraceFilter` does not change the captured, evicted, or dropped totals.
+
 ## Basic Usage
 
 ```rust
@@ -71,7 +76,7 @@ still preserving correct follow-tail and scrollback behavior.
 ## Current Public Path
 
 - `TraceLayer`: subscriber layer for capture.
-- `TraceStore`: shared runtime buffer of retained records.
+- `TraceStore`: shared runtime buffer of retained records and storage counters.
 - `TraceViewer`: Ratatui event-stream viewer.
 - `TraceFilter`: display-time event filter.
 - `TimingLayer`: optional span busy/idle timing layer.
@@ -86,9 +91,8 @@ path above.
   views.
 - The timing layer remains local to this crate. The related upstream tracing PR did not appear to
   land as a stable `tracing-subscriber` API.
-- Selection, expanded details, grouped rows, dropped-record accounting, page movement, and status
+- Selection, expanded details, grouped rows, page movement, and higher-level viewer status
   summaries are planned follow-up work rather than part of the initial viewer surface.
-- No MSRV is declared yet.
 
 The follow-up work is tracked in the
 [main trace viewer roadmap](https://github.com/joshka/tui-tracing/issues/22).
