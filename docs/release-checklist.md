@@ -47,6 +47,18 @@ This crate is experimental, but releases should still use a repeatable quality g
    comment. Use GitHub release assets only for actual release artifacts that should become stable
    README or docs links.
 
+   VHS tapes should follow these project rules:
+
+   - Use the `Aardvark Blue` theme for Ratatui-aligned screenshots and GIFs.
+   - Keep GIF width at or below 1200 pixels unless a specific target requires otherwise.
+   - Give dense log screens enough dwell time to be readable, but watch generated GIF size.
+   - Keep generated binaries out of the repository; the tape is the durable source artifact.
+   - Put inherited-environment cleanup in `just demo-gif`, not in the tape. In particular, unset
+     `NO_COLOR` and related color variables before running VHS.
+   - Hide setup, build, and quit commands. Show the terminal only for the demo content.
+   - Keep tapes simple. Use sleeps for fixed demo pacing unless a startup/build wait is genuinely
+     needed.
+
 1. Publish with a dry run first.
 1. For the first crates.io release, publish manually with a scoped token. crates.io requires the
    first release before trusted publishing can be configured.
