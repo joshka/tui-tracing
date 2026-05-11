@@ -27,6 +27,10 @@ Compact rows default to a short local timestamp so they fit inside an applicatio
 12:04:31.123 INFO  app::net: request{peer="alpha"}: connected latency_ms=12
 ```
 
+When target, span context, message, or fields exceed the rendered width, compact rows use `...`
+to mark overflow. Span context truncates from the left so the innermost span remains visible when
+possible. The selected-event detail remains complete.
+
 Selected-event detail keeps the complete timestamp, target, module path, source location, promoted
 message, event fields, span stack, span fields, lifecycle state, and timing data.
 
