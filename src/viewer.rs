@@ -193,12 +193,12 @@ impl TraceViewer {
         self.follow_tail();
     }
 
-    fn visible_text(&self, snapshot: &TraceSnapshot) -> Text<'static> {
+    fn visible_text(&self, snapshot: &TraceSnapshot, width: u16) -> Text<'static> {
         let selected_event_id = self.selected_event_id;
         self.visible_events(snapshot)
             .into_iter()
             .map(|event| {
-                let line = event_line(event, snapshot, &self.format);
+                let line = event_line(event, snapshot, &self.format, width);
                 if Some(event.id) == selected_event_id {
                     line.style(Style::default().add_modifier(Modifier::REVERSED))
                 } else {
@@ -338,7 +338,7 @@ fn previous_selected_event_id(
 impl Widget for &mut TraceViewer {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let snapshot = self.store.snapshot();
-        let text = self.visible_text(&snapshot);
+        let text = self.visible_text(&snapshot, area.width);
         let visible_lines = text.lines.len();
         let scroll = self.scroll(visible_lines, area.height);
         Paragraph::new(text).scroll((scroll, 0)).render(area, buf);

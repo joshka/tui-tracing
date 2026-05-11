@@ -12,6 +12,8 @@ use crate::field::{FieldMap, FieldValue};
 use crate::record::{EventRecord, Level, SpanRecord};
 use crate::store::TraceSnapshot;
 
+const OVERFLOW_MARKER: &str = "...";
+
 /// Options for rendering captured trace records.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FormatOptions {
@@ -73,75 +75,196 @@ pub(crate) fn event_line(
     event: &EventRecord,
     snapshot: &TraceSnapshot,
     options: &FormatOptions,
+    max_width: u16,
 ) -> Line<'static> {
-    let mut spans = vec![
-        Span::styled(
-            options.timestamp_format.format(event.timestamp),
-            Style::default().add_modifier(Modifier::DIM),
-        ),
-        Span::raw(" "),
-        level_span(event.level),
-    ];
+    let mut pieces = row_pieces(event, snapshot, options);
+    fit_pieces(&mut pieces, usize::from(max_width));
 
-    push_target(&mut spans, event, options);
-    push_context(&mut spans, event, snapshot, options);
-
-    if options.show_location {
-        push_location(&mut spans, event);
+    let mut spans = Vec::with_capacity(pieces.len());
+    for piece in pieces {
+        spans.push(Span::styled(piece.text, piece.style));
     }
-
-    push_message_and_fields(&mut spans, event);
-
     Line::from(spans)
 }
 
-fn push_context(
-    spans: &mut Vec<Span<'static>>,
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum RowPieceKind {
+    Fixed,
+    Target,
+    Context,
+    Location,
+    Fields,
+}
+
+struct RowPiece {
+    text: String,
+    style: Style,
+    kind: RowPieceKind,
+}
+
+impl RowPiece {
+    fn raw(text: impl Into<String>, kind: RowPieceKind) -> Self {
+        Self {
+            text: text.into(),
+            style: Style::default(),
+            kind,
+        }
+    }
+
+    fn styled(text: impl Into<String>, style: Style, kind: RowPieceKind) -> Self {
+        Self {
+            text: text.into(),
+            style,
+            kind,
+        }
+    }
+}
+
+fn row_pieces(
     event: &EventRecord,
     snapshot: &TraceSnapshot,
     options: &FormatOptions,
-) {
-    if options.show_span_context && !event.span_stack.is_empty() {
-        let mut pushed = false;
-        for span in event
+) -> Vec<RowPiece> {
+    let mut pieces = vec![
+        RowPiece::styled(
+            options.timestamp_format.format(event.timestamp),
+            Style::default().add_modifier(Modifier::DIM),
+            RowPieceKind::Fixed,
+        ),
+        RowPiece::raw(" ", RowPieceKind::Fixed),
+        RowPiece::styled(
+            level_text(event.level),
+            level_style(event.level),
+            RowPieceKind::Fixed,
+        ),
+    ];
+
+    if options.show_target {
+        pieces.push(RowPiece::styled(
+            format!("{}: ", event.target),
+            Style::default().add_modifier(Modifier::DIM),
+            RowPieceKind::Target,
+        ));
+    }
+
+    if options.show_span_context {
+        let context = event
             .span_stack
             .iter()
             .filter_map(|span_id| snapshot.spans.get(span_id))
-        {
-            spans.push(Span::styled(
-                format_span_context(span),
+            .map(format_span_context)
+            .join(": ");
+        if !context.is_empty() {
+            pieces.push(RowPiece::styled(
+                format!("{context}: "),
                 Style::default().add_modifier(Modifier::BOLD),
+                RowPieceKind::Context,
             ));
-            spans.push(Span::styled(
-                ":",
+        }
+    }
+
+    if options.show_location {
+        if let Some(location) = format_location(event) {
+            pieces.push(RowPiece::styled(
+                location,
                 Style::default().add_modifier(Modifier::DIM),
+                RowPieceKind::Location,
             ));
-            pushed = true;
         }
+    }
 
-        if pushed {
-            spans.push(Span::raw(" "));
+    let fields = format_event_fields(&event.fields);
+    if !fields.is_empty() {
+        pieces.push(RowPiece::raw(fields, RowPieceKind::Fields));
+    }
+
+    pieces
+}
+
+fn fit_pieces(pieces: &mut [RowPiece], max_width: usize) {
+    if max_width == 0 {
+        for piece in pieces {
+            piece.text.clear();
+        }
+        return;
+    }
+
+    let width = pieces_width(pieces);
+    if width <= max_width {
+        return;
+    }
+
+    let fixed_width = pieces
+        .iter()
+        .filter(|piece| matches!(piece.kind, RowPieceKind::Fixed))
+        .map(|piece| text_width(&piece.text))
+        .sum::<usize>();
+    if fixed_width >= max_width {
+        let mut used = 0;
+        for piece in pieces {
+            let remaining = max_width.saturating_sub(used);
+            piece.text = truncate_end(&piece.text, remaining);
+            used += text_width(&piece.text);
+            if used >= max_width {
+                break;
+            }
+        }
+        return;
+    }
+
+    for kind in [
+        RowPieceKind::Fields,
+        RowPieceKind::Target,
+        RowPieceKind::Context,
+        RowPieceKind::Location,
+    ] {
+        while pieces_width(pieces) > max_width {
+            let excess = pieces_width(pieces).saturating_sub(max_width);
+            let Some(piece) = pieces.iter_mut().rev().find(|piece| piece.kind == kind) else {
+                break;
+            };
+            let width = text_width(&piece.text);
+            let minimum_width = minimum_piece_width(piece.kind);
+            if width <= minimum_width {
+                break;
+            }
+
+            let target_width = width.saturating_sub(excess).max(minimum_width);
+            piece.text = match piece.kind {
+                RowPieceKind::Context => truncate_start(&piece.text, target_width),
+                _ => truncate_end(&piece.text, target_width),
+            };
+        }
+    }
+
+    if pieces_width(pieces) > max_width {
+        let line = pieces
+            .iter()
+            .map(|piece| piece.text.as_str())
+            .collect::<String>();
+        pieces[0].text = truncate_end(&line, max_width);
+        for piece in &mut pieces[1..] {
+            piece.text.clear();
         }
     }
 }
 
-fn push_target(spans: &mut Vec<Span<'static>>, event: &EventRecord, options: &FormatOptions) {
-    if options.show_target {
-        spans.push(Span::styled(
-            event.target.clone(),
-            Style::default().add_modifier(Modifier::DIM),
-        ));
-        spans.push(Span::styled(
-            ":",
-            Style::default().add_modifier(Modifier::DIM),
-        ));
-        spans.push(Span::raw(" "));
+fn pieces_width(pieces: &[RowPiece]) -> usize {
+    pieces.iter().map(|piece| text_width(&piece.text)).sum()
+}
+
+fn minimum_piece_width(kind: RowPieceKind) -> usize {
+    match kind {
+        RowPieceKind::Fixed => 0,
+        RowPieceKind::Target => 12,
+        RowPieceKind::Context => 24,
+        RowPieceKind::Location => 10,
+        RowPieceKind::Fields => 18,
     }
 }
 
-fn push_message_and_fields(spans: &mut Vec<Span<'static>>, event: &EventRecord) {
-    let fields = event
-        .fields
+fn format_event_fields(fields: &FieldMap) -> String {
+    fields
         .iter()
         .map(|(name, value)| {
             if name == "message" {
@@ -152,39 +275,17 @@ fn push_message_and_fields(spans: &mut Vec<Span<'static>>, event: &EventRecord) 
                 format!("{name}={}", FmtFieldValue(value))
             }
         })
-        .join(" ");
-
-    if !fields.is_empty() {
-        spans.push(Span::raw(fields));
-    }
+        .join(" ")
 }
 
-fn push_location(spans: &mut Vec<Span<'static>>, event: &EventRecord) {
-    let Some(file) = event.file.as_deref() else {
-        return;
-    };
-
-    spans.push(Span::styled(
-        file.to_owned(),
-        Style::default().add_modifier(Modifier::DIM),
-    ));
-    spans.push(Span::styled(
-        ":",
-        Style::default().add_modifier(Modifier::DIM),
-    ));
+fn format_location(event: &EventRecord) -> Option<String> {
+    let file = event.file.as_deref()?;
 
     if let Some(line) = event.line {
-        spans.push(Span::styled(
-            line.to_string(),
-            Style::default().add_modifier(Modifier::DIM),
-        ));
-        spans.push(Span::styled(
-            ":",
-            Style::default().add_modifier(Modifier::DIM),
-        ));
+        return Some(format!("{file}:{line}: "));
     }
 
-    spans.push(Span::raw(" "));
+    Some(format!("{file}: "))
 }
 
 fn format_span_context(span: &SpanRecord) -> String {
@@ -223,11 +324,58 @@ impl std::fmt::Display for FmtFieldValue<'_> {
     }
 }
 
-fn level_span(level: Level) -> Span<'static> {
-    Span::styled(
-        format!("{:<5} ", level.0),
-        Style::default().fg(level_color(level)),
-    )
+fn truncate_end(text: &str, max_width: usize) -> String {
+    truncate(text, max_width, TruncateSide::End)
+}
+
+fn truncate_start(text: &str, max_width: usize) -> String {
+    truncate(text, max_width, TruncateSide::Start)
+}
+
+enum TruncateSide {
+    Start,
+    End,
+}
+
+fn truncate(text: &str, max_width: usize, side: TruncateSide) -> String {
+    if text_width(text) <= max_width {
+        return text.to_owned();
+    }
+
+    if max_width <= OVERFLOW_MARKER.len() {
+        return OVERFLOW_MARKER[..max_width].to_owned();
+    }
+
+    let keep = max_width - OVERFLOW_MARKER.len();
+    match side {
+        TruncateSide::Start => {
+            let suffix = text
+                .chars()
+                .rev()
+                .take(keep)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<String>();
+            format!("{OVERFLOW_MARKER}{suffix}")
+        }
+        TruncateSide::End => {
+            let prefix = text.chars().take(keep).collect::<String>();
+            format!("{prefix}{OVERFLOW_MARKER}")
+        }
+    }
+}
+
+fn text_width(text: &str) -> usize {
+    text.chars().count()
+}
+
+fn level_text(level: Level) -> String {
+    format!("{:<5} ", level.0)
+}
+
+fn level_style(level: Level) -> Style {
+    Style::default().fg(level_color(level))
 }
 
 fn level_color(level: Level) -> Color {

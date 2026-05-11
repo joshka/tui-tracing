@@ -73,6 +73,8 @@
 //! the `tracing_subscriber::fmt`-style hierarchy of level, target, span context,
 //! message, and fields. A row should remain useful when an event has no `message`
 //! field because field-only events are valid tracing output.
+//! Long compact-row content is truncated before Ratatui clips the line, with an
+//! inline `...` marker showing that complete data is available in detail.
 //!
 //! Selected-event detail is the full metadata surface. It keeps the complete
 //! timestamp, level, target, module path, source location, promoted message, event
