@@ -2,10 +2,17 @@
 name = "tui-tracing"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.86"
 description = "Runtime tracing viewer primitives for Ratatui applications"
 repository = "https://github.com/joshka/tui-tracing"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
+keywords = ["ratatui", "tracing", "tui", "logging"]
+categories = ["command-line-interface", "development-tools::debugging"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 chrono = "0.4.38"

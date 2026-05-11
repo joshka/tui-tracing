@@ -201,6 +201,11 @@ Recommended GitHub Actions shape:
 ## Release Automation
 
 - Have one command or documented checklist that reproduces the release gate.
+- Use release-plz to prepare release PRs, tag published versions, create GitHub releases, and
+  publish crates.io versions after the first manual release.
+- Use crates.io trusted publishing for CI releases. Do not store a long-lived
+  `CARGO_REGISTRY_TOKEN` secret in GitHub Actions.
+- Keep the trusted publisher bound to a specific workflow filename and GitHub environment.
 - Validate package contents before publishing with `cargo package --workspace` or per-crate
   packaging as appropriate.
 - Inspect included docs, examples, license files, README, and generated artifacts.
