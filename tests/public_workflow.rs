@@ -23,7 +23,12 @@ fn store_status_tracks_empty_capacity_as_dropped_events() {
     assert_eq!(status.evicted_events, 0);
     assert_eq!(status.dropped_events, 2);
     assert_eq!(status.lost_events(), 2);
+    assert_eq!(status.remaining_event_capacity(), 0);
     assert!(status.is_empty());
+    assert!(status.is_at_event_capacity());
+    assert!(status.has_lost_events());
+    assert!(!status.has_evicted_events());
+    assert!(status.has_dropped_events());
 }
 
 #[test]
@@ -47,6 +52,10 @@ fn store_status_tracks_retained_events_without_eviction() {
     assert_eq!(status.evicted_events, 0);
     assert_eq!(status.dropped_events, 0);
     assert_eq!(status.lost_events(), 0);
+    assert_eq!(status.remaining_event_capacity(), 1);
+    assert!(!status.is_empty());
+    assert!(!status.is_at_event_capacity());
+    assert!(!status.has_lost_events());
 
     let snapshot = store.snapshot();
     assert_eq!(snapshot.status, status);
@@ -70,6 +79,12 @@ fn store_status_tracks_fifo_eviction_and_clear_reset() {
     assert_eq!(status.evicted_events, 1);
     assert_eq!(status.dropped_events, 0);
     assert_eq!(status.lost_events(), 1);
+    assert_eq!(status.remaining_event_capacity(), 0);
+    assert!(!status.is_empty());
+    assert!(status.is_at_event_capacity());
+    assert!(status.has_lost_events());
+    assert!(status.has_evicted_events());
+    assert!(!status.has_dropped_events());
 
     let snapshot = store.snapshot();
     assert_eq!(snapshot.events.len(), 2);
@@ -90,6 +105,9 @@ fn store_status_tracks_fifo_eviction_and_clear_reset() {
             ..Default::default()
         }
     );
+    assert_eq!(store.status().remaining_event_capacity(), 2);
+    assert!(store.status().is_empty());
+    assert!(!store.status().is_at_event_capacity());
     assert!(store.snapshot().events.is_empty());
 }
 
