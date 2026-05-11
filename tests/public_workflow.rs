@@ -4,8 +4,8 @@ use tracing::subscriber;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 use tui_tracing::{
-    EventRecord, FieldMap, FieldValue, Level, TraceEventDetail, TraceFilter, TraceLayer,
-    TraceScrollMode, TraceSpanDetail, TraceStore, TraceViewer,
+    EventRecord, FieldMap, FieldValue, Level, TimestampFormat, TraceEventDetail, TraceFilter,
+    TraceLayer, TraceScrollMode, TraceSpanDetail, TraceStore, TraceViewer,
 };
 
 #[test]
@@ -172,12 +172,60 @@ fn viewer_uses_default_fmt_style_ordering() {
         tracing::info!(answer = 42, "connected");
     });
 
+    let expected_timestamp = store.snapshot().events[0]
+        .timestamp
+        .format("%H:%M:%S%.3f")
+        .to_string();
     let mut viewer = TraceViewer::new(store);
     let rendered = render_viewer(&mut viewer, 140, 3);
+    let row = first_non_empty_row(&rendered);
 
-    assert!(rendered.contains("INFO  request{user=\"alice\"}:"));
-    assert!(rendered.contains("public_workflow"));
-    assert!(rendered.contains(": connected answer=42"));
+    assert!(row.starts_with(&expected_timestamp));
+    assert!(row.contains("INFO  public_workflow: request{user=\"alice\"}:"));
+    assert!(row.contains(": connected answer=42"));
+    assert_ordered(
+        row,
+        &[
+            "INFO",
+            "public_workflow:",
+            "request{user=\"alice\"}:",
+            "connected",
+            "answer=42",
+        ],
+    );
+}
+
+#[test]
+fn viewer_supports_configured_timestamp_formats() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!("configured timestamp");
+    });
+
+    let event = store.snapshot().events[0].clone();
+
+    let mut viewer = TraceViewer::new(store.clone());
+    let mut format = viewer.format_options().clone();
+    format.timestamp_format = TimestampFormat::Rfc3339;
+    viewer.set_format_options(format);
+    let rendered = render_viewer(&mut viewer, 140, 3);
+    assert!(first_non_empty_row(&rendered).starts_with(
+        &event
+            .timestamp
+            .format("%Y-%m-%dT%H:%M:%S%.6f%:z")
+            .to_string()
+    ));
+
+    let mut viewer = TraceViewer::new(store);
+    let mut format = viewer.format_options().clone();
+    format.timestamp_format = TimestampFormat::Custom("[%H:%M]".to_owned());
+    viewer.set_format_options(format);
+    let rendered = render_viewer(&mut viewer, 140, 3);
+    assert!(
+        first_non_empty_row(&rendered).starts_with(&event.timestamp.format("[%H:%M]").to_string())
+    );
 }
 
 #[test]
@@ -438,6 +486,26 @@ fn selected_detail_renders_event_fields_span_fields_and_source_location() {
     assert!(rendered.contains("user: alice"));
     assert!(rendered.contains("route: /checkout"));
     assert!(rendered.contains("lifecycle: closed"));
+    assert_eq!(rendered.matches("message: payment declined").count(), 1);
+    assert_ordered(
+        &rendered,
+        &[
+            "Event",
+            "time:",
+            "level:",
+            "target:",
+            "module:",
+            "location:",
+            "message:",
+            "Fields",
+            "answer:",
+            "Span stack",
+            "0. request",
+            "lifecycle:",
+            "fields",
+            "user:",
+        ],
+    );
 }
 
 #[test]
@@ -761,6 +829,23 @@ fn render_detail(detail: &TraceEventDetail, width: u16, height: u16) -> String {
         .draw(|frame| frame.render_widget(detail, frame.area()))
         .unwrap();
     buffer_rows(terminal.backend().buffer()).join("\n")
+}
+
+fn first_non_empty_row(rendered: &str) -> &str {
+    rendered
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .expect("rendered output contains a non-empty row")
+}
+
+fn assert_ordered(rendered: &str, needles: &[&str]) {
+    let mut start = 0;
+    for needle in needles {
+        let offset = rendered[start..]
+            .find(needle)
+            .unwrap_or_else(|| panic!("expected {needle:?} after byte {start} in:\n{rendered}"));
+        start += offset + needle.len();
+    }
 }
 
 fn buffer_rows(buffer: &ratatui::buffer::Buffer) -> Vec<String> {
