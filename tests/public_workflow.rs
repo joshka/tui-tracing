@@ -229,6 +229,57 @@ fn viewer_supports_configured_timestamp_formats() {
 }
 
 #[test]
+fn viewer_hides_source_locations_by_default() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!("source hidden");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    assert!(!viewer.show_source_locations());
+
+    let rendered = render_viewer(&mut viewer, 140, 3);
+
+    assert!(rendered.contains("source hidden"));
+    assert!(!rendered.contains("tests/public_workflow.rs:"));
+}
+
+#[test]
+fn viewer_can_enable_source_locations_without_rebuilding() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::warn!("source visible");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    let hidden = render_viewer(&mut viewer, 140, 3);
+    assert!(!hidden.contains("tests/public_workflow.rs:"));
+
+    viewer.set_show_source_locations(true);
+    assert!(viewer.show_source_locations());
+    let visible = render_viewer(&mut viewer, 140, 3);
+
+    assert!(visible.contains("tests/public_workflow.rs:"));
+    assert!(visible.contains("source visible"));
+}
+
+#[test]
+fn viewer_toggles_source_locations_for_keybindings() {
+    let store = TraceStore::default();
+    let mut viewer = TraceViewer::new(store);
+
+    assert!(!viewer.show_source_locations());
+    assert!(viewer.toggle_source_locations());
+    assert!(viewer.show_source_locations());
+    assert!(!viewer.toggle_source_locations());
+    assert!(!viewer.show_source_locations());
+}
+
+#[test]
 fn viewer_marks_overflow_for_long_targets() {
     let store = TraceStore::default();
     let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));

@@ -18,6 +18,10 @@ Sleep 4s
 Show
 Sleep 6s
 
+Type "s"
+Sleep 2s
+Type "s"
+Sleep 1s
 Type "j"
 Sleep 1s
 Type "j"

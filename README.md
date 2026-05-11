@@ -101,6 +101,8 @@ For rendering full selected-event context, call `selected_detail()` and render t
 `TraceEventDetail` into a caller-owned pane. Compact row rendering remains fmt-like and optimized
 for scanning: short timestamp, level, target, span context, message, and fields.
 `FormatOptions` can switch compact rows to full RFC 3339 timestamps or a custom Chrono format.
+`TraceViewer::set_show_source_locations` enables source file and line display in compact rows
+without rebuilding the viewer.
 Detail rendering is where full fields, source location, and span-stack context live.
 `TraceEventDetail::text()` exposes the formatted detail text for applications that need their
 own scroll state, borders, titles, or layout chrome around the detail pane.
