@@ -120,4 +120,4 @@ pub use layer::{TraceLayer, TracingLayer};
 pub use record::{EventId, EventRecord, Level, SpanId, SpanRecord};
 pub use store::{TraceSnapshot, TraceStore, TraceStoreStatus};
 pub use timing_layer::{Timing, TimingLayer};
-pub use viewer::TraceViewer;
+pub use viewer::{TraceScrollMode, TraceViewStatus, TraceViewer};

@@ -18,7 +18,7 @@ use tracing::{debug, error, info, trace, warn, Level};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tui_tracing::{TraceFilter, TraceLayer, TraceViewer};
+use tui_tracing::{TraceFilter, TraceLayer, TraceScrollMode, TraceViewStatus, TraceViewer};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -92,11 +92,8 @@ impl App {
 
         let title =
             Line::from("tui-tracing demo").style(Style::default().add_modifier(Modifier::BOLD));
-        let status = Line::from(format!(
-            "q quit | d level {}+ | Up/Down scroll | End follow tail",
-            self.min_level
-        ))
-        .style(Style::default().add_modifier(Modifier::DIM));
+        let status = demo_status(self.min_level, self.viewer.status())
+            .style(Style::default().add_modifier(Modifier::DIM));
 
         frame.render_widget(Paragraph::new(title), title_area);
         frame.render_widget(&mut self.viewer, trace_area);
@@ -147,6 +144,20 @@ impl App {
             .set_filter(TraceFilter::all().with_min_level(self.min_level));
         info!(visible_level = %self.min_level, "updated display filter");
     }
+}
+
+fn demo_status(min_level: Level, status: TraceViewStatus) -> Line<'static> {
+    let mode = match status.scroll_mode {
+        TraceScrollMode::FollowTail => "tail",
+        TraceScrollMode::Scrollback => "scrollback",
+    };
+
+    Line::from(format!(
+        "q quit | d level {min_level}+ | Up/Down scroll | End follow tail | {mode} | visible {}/{} | lost {}",
+        status.visible_events,
+        status.store.retained_events,
+        status.store.lost_events()
+    ))
 }
 
 async fn generate_traces(token: CancellationToken) {

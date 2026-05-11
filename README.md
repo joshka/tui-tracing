@@ -75,6 +75,11 @@ through methods such as `set_filter`, `scroll_up`, `scroll_down`, and `follow_ta
 render `&mut viewer` in the area they assign to trace output. This avoids `StatefulWidget` while
 still preserving correct follow-tail and scrollback behavior.
 
+Applications can call `TraceViewer::status()` to build their own status bars without duplicating
+viewer logic. The returned status includes follow-tail versus scrollback mode, the last computed
+scroll offsets, visible and hidden event counts after display filtering, the active filter, and
+the underlying `TraceStoreStatus`.
+
 ## Current Public Path
 
 - `TraceLayer`: subscriber layer for capture.

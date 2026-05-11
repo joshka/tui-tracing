@@ -34,3 +34,7 @@ machete:
     cargo machete
 
 ci: fmt-check check test clippy doc markdown package audit machete
+
+demo-gif:
+    mkdir -p target/vhs
+    vhs tapes/demo.tape
