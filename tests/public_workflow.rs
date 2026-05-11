@@ -1,4 +1,6 @@
 use ratatui::backend::TestBackend;
+use ratatui::buffer::Buffer;
+use ratatui::style::{Color, Modifier};
 use ratatui::Terminal;
 use tracing::subscriber;
 use tracing_subscriber::layer::SubscriberExt;
@@ -645,7 +647,7 @@ fn selected_detail_renders_event_fields_span_fields_and_source_location() {
             "module:",
             "location:",
             "message:",
-            "Fields",
+            "fields",
             "answer:",
             "Span stack",
             "0. request",
@@ -654,6 +656,35 @@ fn selected_detail_renders_event_fields_span_fields_and_source_location() {
             "user:",
         ],
     );
+}
+
+#[test]
+fn selected_detail_styles_event_and_span_hierarchy() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        let span = tracing::info_span!("request", user = "alice");
+        let _guard = span.enter();
+        tracing::warn!(answer = 42, "payment declined");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    viewer.select_first();
+    let detail = viewer
+        .selected_detail()
+        .expect("selected visible event has renderable detail");
+    let buffer = render_detail_buffer(&detail, 120, 24);
+
+    assert_cell_style(&buffer, "Event", Color::Cyan, Modifier::BOLD);
+    assert_cell_style(&buffer, "message:", Color::Gray, Modifier::empty());
+    assert_cell_style(&buffer, "WARN", Color::Reset, Modifier::empty());
+    assert_cell_style(&buffer, "fields", Color::Gray, Modifier::BOLD);
+    assert_cell_style(&buffer, "answer:", Color::Gray, Modifier::empty());
+    assert_cell_style(&buffer, "Span stack", Color::Cyan, Modifier::BOLD);
+    assert_cell_style(&buffer, "0.", Color::DarkGray, Modifier::DIM);
+    assert_cell_style(&buffer, "request", Color::Cyan, Modifier::BOLD);
+    assert_cell_style(&buffer, "user:", Color::Gray, Modifier::empty());
 }
 
 #[test]
@@ -713,6 +744,28 @@ fn event_detail_renders_missing_source_location_and_missing_span_records() {
     assert!(rendered.contains("message: synthetic"));
     assert!(rendered.contains("code: 503"));
     assert!(rendered.contains("<missing span 99>"));
+}
+
+#[test]
+fn selected_detail_styles_missing_values() {
+    let event = EventRecord {
+        id: 7,
+        timestamp: chrono::Local::now(),
+        level: Level(tracing::Level::ERROR),
+        target: "synthetic::target".to_owned(),
+        module_path: None,
+        file: None,
+        line: None,
+        fields: FieldMap::default(),
+        span_id: Some(99),
+        span_stack: vec![99],
+    };
+    let detail = TraceEventDetail::new(event, vec![TraceSpanDetail::missing(99)]);
+    let buffer = render_detail_buffer(&detail, 100, 16);
+
+    assert_cell_style(&buffer, "<unknown>", Color::DarkGray, Modifier::DIM);
+    assert_cell_style(&buffer, "<none>", Color::DarkGray, Modifier::DIM);
+    assert_cell_style(&buffer, "<missing span 99>", Color::DarkGray, Modifier::DIM);
 }
 
 #[test]
@@ -971,12 +1024,16 @@ fn render_viewer_event_rows(viewer: &mut TraceViewer, width: u16, height: u16) -
 }
 
 fn render_detail(detail: &TraceEventDetail, width: u16, height: u16) -> String {
+    buffer_rows(&render_detail_buffer(detail, width, height)).join("\n")
+}
+
+fn render_detail_buffer(detail: &TraceEventDetail, width: u16, height: u16) -> Buffer {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| frame.render_widget(detail, frame.area()))
         .unwrap();
-    buffer_rows(terminal.backend().buffer()).join("\n")
+    terminal.backend().buffer().clone()
 }
 
 fn first_non_empty_row(rendered: &str) -> &str {
@@ -994,6 +1051,36 @@ fn assert_ordered(rendered: &str, needles: &[&str]) {
             .unwrap_or_else(|| panic!("expected {needle:?} after byte {start} in:\n{rendered}"));
         start += offset + needle.len();
     }
+}
+
+fn assert_cell_style(buffer: &Buffer, text: &str, fg: Color, modifier: Modifier) {
+    let (x, y) = find_text(buffer, text);
+    let cell = buffer
+        .cell((x, y))
+        .expect("text coordinate points inside the buffer");
+    assert_eq!(cell.fg, fg, "foreground for {text:?}");
+    assert!(
+        cell.modifier.contains(modifier),
+        "modifier for {text:?}: expected {:?} in {:?}",
+        modifier,
+        cell.modifier
+    );
+}
+
+fn find_text(buffer: &Buffer, text: &str) -> (u16, u16) {
+    let area = buffer.area;
+    for y in area.y..area.y + area.height {
+        let row = (area.x..area.x + area.width)
+            .filter_map(|x| buffer.cell((x, y)).map(|cell| cell.symbol()))
+            .collect::<String>();
+        if let Some(x) = row.find(text) {
+            return (u16::try_from(x).expect("test buffer width fits in u16"), y);
+        }
+    }
+    panic!(
+        "expected to find {text:?} in:\n{}",
+        buffer_rows(buffer).join("\n")
+    );
 }
 
 fn buffer_rows(buffer: &ratatui::buffer::Buffer) -> Vec<String> {

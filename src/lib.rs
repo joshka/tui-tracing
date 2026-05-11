@@ -79,6 +79,9 @@
 //! Selected-event detail is the full metadata surface. It keeps the complete
 //! timestamp, level, target, module path, source location, promoted message, event
 //! fields, full span stack, span fields, lifecycle state, and timing.
+//! Detail styling uses restrained color and indentation to show ownership:
+//! metadata and fields belong to the selected event, and span fields belong to
+//! the span context around that event.
 //!
 //! The main screen should expose behavior that applications can bind to their own
 //! input model:

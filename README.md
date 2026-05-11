@@ -32,7 +32,9 @@ to mark overflow. Span context truncates from the left so the innermost span rem
 possible. The selected-event detail remains complete.
 
 Selected-event detail keeps the complete timestamp, target, module path, source location, promoted
-message, event fields, span stack, span fields, lifecycle state, and timing data.
+message, event fields, span stack, span fields, lifecycle state, and timing data. Its layout and
+styling should communicate ownership: event fields are nested under the event, span fields are
+nested under their span, and the span stack is context for the selected event.
 
 Span trees, timing summaries, and aggregation are secondary views built from the same retained
 records. Nesting is important data, but it should not dominate the first diagnostic view.
@@ -103,7 +105,9 @@ for scanning: short timestamp, level, target, span context, message, and fields.
 `FormatOptions` can switch compact rows to full RFC 3339 timestamps or a custom Chrono format.
 `TraceViewer::set_show_source_locations` enables source file and line display in compact rows
 without rebuilding the viewer.
-Detail rendering is where full fields, source location, and span-stack context live.
+Detail rendering is where full fields, source location, and span-stack context live. Its styling
+uses a small palette and indentation to show how metadata, fields, and span context relate without
+turning the pane into a color legend.
 `TraceEventDetail::text()` exposes the formatted detail text for applications that need their
 own scroll state, borders, titles, or layout chrome around the detail pane.
 

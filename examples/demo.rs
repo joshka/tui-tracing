@@ -10,7 +10,7 @@ use ratatui::crossterm::event::EventStream;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::DefaultTerminal;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
@@ -107,10 +107,11 @@ impl App {
         frame.render_widget(Paragraph::new(title).style(bar_style), title_area);
         if let Some(detail) = self.viewer.selected_detail() {
             let [trace_area, detail_area] =
-                Layout::vertical([Constraint::Percentage(58), Constraint::Percentage(42)])
+                Layout::vertical([Constraint::Percentage(52), Constraint::Percentage(48)])
                     .areas(trace_area);
             frame.render_widget(&mut self.viewer, trace_area);
-            let detail_block = Block::bordered()
+            let detail_block = Block::default()
+                .borders(Borders::TOP)
                 .title(" selected event detail ")
                 .border_style(Style::default().fg(Color::Cyan));
             let detail = Paragraph::new(detail.text())
