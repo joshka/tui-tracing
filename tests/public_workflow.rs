@@ -6,6 +6,94 @@ use tracing_subscriber::Registry;
 use tui_tracing::{FieldValue, TraceFilter, TraceLayer, TraceStore, TraceViewer};
 
 #[test]
+fn store_status_tracks_empty_capacity_as_dropped_events() {
+    let store = TraceStore::with_capacity(0);
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!("not retained");
+        tracing::warn!("also not retained");
+    });
+
+    let status = store.status();
+    assert_eq!(status.event_capacity, 0);
+    assert_eq!(status.captured_events, 2);
+    assert_eq!(status.accepted_events, 0);
+    assert_eq!(status.retained_events, 0);
+    assert_eq!(status.evicted_events, 0);
+    assert_eq!(status.dropped_events, 2);
+    assert_eq!(status.lost_events(), 2);
+    assert!(status.is_empty());
+}
+
+#[test]
+fn store_status_tracks_retained_events_without_eviction() {
+    let store = TraceStore::with_capacity(3);
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        let span = tracing::info_span!("request");
+        let _guard = span.enter();
+        tracing::info!("one");
+        tracing::info!("two");
+    });
+
+    let status = store.status();
+    assert_eq!(status.event_capacity, 3);
+    assert_eq!(status.captured_events, 2);
+    assert_eq!(status.accepted_events, 2);
+    assert_eq!(status.retained_events, 2);
+    assert_eq!(status.retained_spans, 1);
+    assert_eq!(status.evicted_events, 0);
+    assert_eq!(status.dropped_events, 0);
+    assert_eq!(status.lost_events(), 0);
+
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.status, status);
+}
+
+#[test]
+fn store_status_tracks_fifo_eviction_and_clear_reset() {
+    let store = TraceStore::with_capacity(2);
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!("one");
+        tracing::info!("two");
+        tracing::info!("three");
+    });
+
+    let status = store.status();
+    assert_eq!(status.captured_events, 3);
+    assert_eq!(status.accepted_events, 3);
+    assert_eq!(status.retained_events, 2);
+    assert_eq!(status.evicted_events, 1);
+    assert_eq!(status.dropped_events, 0);
+    assert_eq!(status.lost_events(), 1);
+
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.events.len(), 2);
+    assert_eq!(
+        snapshot.events[0].fields.get("message"),
+        Some(&FieldValue::Debug("two".to_owned()))
+    );
+    assert_eq!(
+        snapshot.events[1].fields.get("message"),
+        Some(&FieldValue::Debug("three".to_owned()))
+    );
+
+    store.clear();
+    assert_eq!(
+        store.status(),
+        tui_tracing::TraceStoreStatus {
+            event_capacity: 2,
+            ..Default::default()
+        }
+    );
+    assert!(store.snapshot().events.is_empty());
+}
+
+#[test]
 fn capture_preserves_span_context_and_field_only_events() {
     let store = TraceStore::default();
     let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
