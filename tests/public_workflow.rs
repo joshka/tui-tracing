@@ -263,6 +263,146 @@ fn viewer_status_reports_scrollback_after_scroll_changes() {
 }
 
 #[test]
+fn viewer_selection_is_empty_without_visible_events() {
+    let store = TraceStore::default();
+    let mut viewer = TraceViewer::new(store);
+
+    assert_eq!(viewer.status().selected_event_id, None);
+    assert!(viewer.selected_event().is_none());
+
+    viewer.select_next();
+    assert_eq!(viewer.status().selected_event_id, None);
+
+    viewer.select_previous();
+    assert_eq!(viewer.status().selected_event_id, None);
+}
+
+#[test]
+fn viewer_selection_moves_through_visible_events() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!("only");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+
+    viewer.select_next();
+    assert_eq!(viewer.status().selected_visible_index, Some(0));
+    assert_eq!(
+        selected_message(&viewer),
+        Some(FieldValue::Debug("only".to_owned()))
+    );
+
+    viewer.select_next();
+    assert_eq!(viewer.status().selected_visible_index, Some(0));
+
+    viewer.clear_selection();
+    assert_eq!(viewer.status().selected_event_id, None);
+
+    viewer.select_previous();
+    assert_eq!(viewer.status().selected_visible_index, Some(0));
+}
+
+#[test]
+fn viewer_selection_uses_filtered_visible_rows() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::debug!("hidden");
+        tracing::info!("visible-info");
+        tracing::warn!("visible-warn");
+    });
+
+    let mut viewer = TraceViewer::new(store);
+    viewer.set_filter(TraceFilter::all().with_min_level(tracing::Level::INFO));
+
+    viewer.select_next();
+    assert_eq!(viewer.status().selected_visible_index, Some(0));
+    assert_eq!(
+        selected_message(&viewer),
+        Some(FieldValue::Debug("visible-info".to_owned()))
+    );
+
+    viewer.select_next();
+    assert_eq!(viewer.status().selected_visible_index, Some(1));
+    assert_eq!(
+        selected_message(&viewer),
+        Some(FieldValue::Debug("visible-warn".to_owned()))
+    );
+
+    viewer.set_filter(TraceFilter::all().with_min_level(tracing::Level::ERROR));
+    assert_eq!(viewer.status().selected_event_id, None);
+    assert!(viewer.selected_event().is_none());
+}
+
+#[test]
+fn viewer_selection_is_stable_when_new_events_arrive() {
+    let store = TraceStore::default();
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        for index in 0..4 {
+            tracing::info!("event-{index}");
+        }
+
+        let mut viewer = TraceViewer::new(store.clone());
+        viewer.select_next();
+        viewer.select_next();
+        viewer.select_next();
+        let selected_event_id = viewer.status().selected_event_id;
+        assert_eq!(
+            selected_message(&viewer),
+            Some(FieldValue::Debug("event-2".to_owned()))
+        );
+
+        viewer.scroll_up(1);
+
+        for index in 4..7 {
+            tracing::info!("event-{index}");
+        }
+
+        let status = viewer.status();
+        assert_eq!(status.selected_event_id, selected_event_id);
+        assert_eq!(status.selected_visible_index, Some(2));
+        assert_eq!(
+            selected_message(&viewer),
+            Some(FieldValue::Debug("event-2".to_owned()))
+        );
+    });
+}
+
+#[test]
+fn viewer_selection_clears_when_retention_evicts_selected_event() {
+    let store = TraceStore::with_capacity(2);
+    let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
+
+    subscriber::with_default(subscriber, || {
+        tracing::info!("one");
+        tracing::info!("two");
+
+        let mut viewer = TraceViewer::new(store.clone());
+        viewer.select_first();
+        assert_eq!(
+            selected_message(&viewer),
+            Some(FieldValue::Debug("one".to_owned()))
+        );
+
+        tracing::info!("three");
+        assert_eq!(viewer.status().selected_event_id, None);
+        assert!(viewer.selected_event().is_none());
+
+        viewer.select_next();
+        assert_eq!(
+            selected_message(&viewer),
+            Some(FieldValue::Debug("two".to_owned()))
+        );
+    });
+}
+
+#[test]
 fn viewer_follows_tail_by_default() {
     let store = TraceStore::default();
     let subscriber = Registry::default().with(TraceLayer::from_store(store.clone()));
@@ -331,4 +471,10 @@ fn render_viewer(viewer: &mut TraceViewer, width: u16, height: u16) -> String {
         .draw(|frame| frame.render_widget(viewer, frame.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
+}
+
+fn selected_message(viewer: &TraceViewer) -> Option<FieldValue> {
+    viewer
+        .selected_event()
+        .and_then(|event| event.fields.get("message").cloned())
 }

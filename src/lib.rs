@@ -94,9 +94,9 @@
 //! features built from [`TraceStore`].
 //!
 //! The current implementation is an initial version of that shape. Missing pieces
-//! that the public API should grow toward include selected-row state, detail
-//! rendering, compact filter/status summaries, overflow handling for long context
-//! and fields, grouped rows, and tests for follow-tail and selection behavior.
+//! that the public API should grow toward include detail rendering, compact
+//! filter/status summaries, overflow handling for long context and fields, and
+//! grouped rows.
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::bare_urls)]

@@ -77,8 +77,12 @@ still preserving correct follow-tail and scrollback behavior.
 
 Applications can call `TraceViewer::status()` to build their own status bars without duplicating
 viewer logic. The returned status includes follow-tail versus scrollback mode, the last computed
-scroll offsets, visible and hidden event counts after display filtering, the active filter, and
-the underlying `TraceStoreStatus`.
+scroll offsets, visible and hidden event counts after display filtering, selected visible row
+state, the active filter, and the underlying `TraceStoreStatus`.
+
+Selection is tracked by retained event id and interpreted through the active display filter.
+Applications can move selection with `select_next`, `select_previous`, `select_first`, and
+`select_last`, then read `selected_event` or `TraceViewer::status()` for app-owned detail views.
 
 ## Current Public Path
 
@@ -98,8 +102,8 @@ path above.
   views.
 - The timing layer remains local to this crate. The related upstream tracing PR did not appear to
   land as a stable `tracing-subscriber` API.
-- Selection, expanded details, grouped rows, page movement, and higher-level viewer status
-  summaries are planned follow-up work rather than part of the initial viewer surface.
+- Expanded details, grouped rows, page movement, and higher-level viewer status summaries are
+  planned follow-up work rather than part of the initial viewer surface.
 
 The follow-up work is tracked in the
 [main trace viewer roadmap](https://github.com/joshka/tui-tracing/issues/22).
