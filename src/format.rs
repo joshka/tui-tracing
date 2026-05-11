@@ -188,14 +188,14 @@ fn row_pieces(
         }
     }
 
-    if options.show_location {
-        if let Some(location) = format_location(event) {
-            pieces.push(RowPiece::styled(
-                location,
-                Style::default().add_modifier(Modifier::DIM),
-                RowPieceKind::Location,
-            ));
-        }
+    if options.show_location
+        && let Some(location) = format_location(event)
+    {
+        pieces.push(RowPiece::styled(
+            location,
+            Style::default().add_modifier(Modifier::DIM),
+            RowPieceKind::Location,
+        ));
     }
 
     let fields = format_event_fields(&event.fields);

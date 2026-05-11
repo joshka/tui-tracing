@@ -4,8 +4,8 @@ use std::time::Duration;
 use color_eyre::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use futures::StreamExt;
+use rand::RngExt;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::EventStream;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -371,11 +371,11 @@ fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
 }
 
 async fn generate_traces(token: CancellationToken) {
-    let mut rng = StdRng::from_entropy();
+    let mut rng: StdRng = rand::make_rng();
     let mut sequence = 0_u64;
 
     loop {
-        let delay = Duration::from_millis(rng.gen_range(40..900));
+        let delay = Duration::from_millis(rng.random_range(40..900));
         tokio::select! {
             _ = token.cancelled() => break,
             _ = tokio::time::sleep(delay) => {}
@@ -387,11 +387,11 @@ async fn generate_traces(token: CancellationToken) {
 }
 
 fn emit_random_event(rng: &mut StdRng, sequence: u64) {
-    let request_id = format!("req-{:04}", rng.gen_range(1000..9999));
-    let session = ["local", "ssh-prod", "devbox", "staging"][rng.gen_range(0..4)];
-    let panel = ["trace", "status", "details", "filters"][rng.gen_range(0..4)];
+    let request_id = format!("req-{:04}", rng.random_range(1000..9999));
+    let session = ["local", "ssh-prod", "devbox", "staging"][rng.random_range(0..4)];
+    let panel = ["trace", "status", "details", "filters"][rng.random_range(0..4)];
 
-    match rng.gen_range(0..100) {
+    match rng.random_range(0..100) {
         0..=6 => {
             let span = tracing::error_span!(
                 target: "demo::storage",
@@ -404,7 +404,7 @@ fn emit_random_event(rng: &mut StdRng, sequence: u64) {
                 target: "demo::storage",
                 sequence,
                 path = "/tmp/tui-tracing/snapshot.json",
-                bytes = rng.gen_range(8_000..250_000),
+                bytes = rng.random_range(8_000..250_000),
                 error = "No space left on device",
                 "failed to persist trace snapshot"
             );
@@ -420,8 +420,8 @@ fn emit_random_event(rng: &mut StdRng, sequence: u64) {
             warn!(
                 target: "demo::network",
                 sequence,
-                attempt = rng.gen_range(2..=5),
-                retry_after_ms = rng.gen_range(100..2_500),
+                attempt = rng.random_range(2..=5),
+                retry_after_ms = rng.random_range(100..2_500),
                 status = 503,
                 "trace event fetch failed; scheduling retry"
             );
@@ -431,15 +431,15 @@ fn emit_random_event(rng: &mut StdRng, sequence: u64) {
                 target: "demo::app",
                 "apply_filter",
                 %request_id,
-                level = ?["ERROR", "WARN", "INFO", "DEBUG", "TRACE"][rng.gen_range(0..5)]
+                level = ?["ERROR", "WARN", "INFO", "DEBUG", "TRACE"][rng.random_range(0..5)]
             );
             let _guard = span.enter();
             info!(
                 target: "demo::app",
                 sequence,
-                visible = rng.gen_range(15..600),
-                retained = rng.gen_range(900..10_000),
-                elapsed_ms = rng.gen_range(1..35),
+                visible = rng.random_range(15..600),
+                retained = rng.random_range(900..10_000),
+                elapsed_ms = rng.random_range(1..35),
                 "updated display filter"
             );
         }
@@ -447,16 +447,16 @@ fn emit_random_event(rng: &mut StdRng, sequence: u64) {
             let span = tracing::debug_span!(
                 target: "demo::render",
                 "draw_frame",
-                frame = rng.gen_range(1_000..9_999),
+                frame = rng.random_range(1_000..9_999),
                 %panel
             );
             let _guard = span.enter();
             debug!(
                 target: "demo::render",
                 sequence,
-                rows = rng.gen_range(20..80),
-                dirty_regions = rng.gen_range(0..12),
-                frame_time_ms = rng.gen_range(3..28),
+                rows = rng.random_range(20..80),
+                dirty_regions = rng.random_range(0..12),
+                frame_time_ms = rng.random_range(3..28),
                 "rendered trace viewer"
             );
         }
@@ -470,8 +470,8 @@ fn emit_random_event(rng: &mut StdRng, sequence: u64) {
             trace!(
                 target: "demo::input",
                 sequence,
-                event = ?["key:Down", "key:End", "mouse:scroll", "resize"][rng.gen_range(0..4)],
-                queue_depth = rng.gen_range(0..20),
+                event = ?["key:Down", "key:End", "mouse:scroll", "resize"][rng.random_range(0..4)],
+                queue_depth = rng.random_range(0..20),
                 "processed terminal event"
             );
         }

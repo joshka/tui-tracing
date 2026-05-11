@@ -139,8 +139,7 @@ path above.
   views.
 - The timing layer remains local to this crate. The related upstream [`tracing`] PR did not appear
   to land as a stable [`tracing-subscriber`] API.
-- Expanded details, grouped rows, page movement, and higher-level viewer status summaries are
-  planned follow-up work rather than part of the initial viewer surface.
+- Grouped rows are planned follow-up work rather than part of the initial viewer surface.
 
 The follow-up work is tracked in the
 [main trace viewer roadmap](https://github.com/joshka/tui-tracing/issues/22).
