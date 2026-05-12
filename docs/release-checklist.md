@@ -19,12 +19,6 @@ This crate is experimental, but releases should still use a repeatable quality g
    just ci
    ```
 
-1. Run the pending dependency-policy check once `cargo-deny` is configured:
-
-   ```sh
-   cargo deny check
-   ```
-
 1. Validate package contents if you need to inspect the archive before publishing:
 
    ```sh
@@ -73,6 +67,5 @@ This crate is experimental, but releases should still use a repeatable quality g
 ## Manual Validation Gaps
 
 - Platform support is not yet validated on Windows, macOS, and Linux CI.
-- No `cargo-deny` policy is configured yet.
 - No fuzz targets or benchmarks exist yet.
 - Markdown link checking is not configured because external link checks can be flaky.

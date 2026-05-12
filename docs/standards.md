@@ -122,7 +122,7 @@ easy to understand, audit, extend, and use correctly.
 - `cargo package --workspace --allow-dirty` for local pre-commit validation
 - `cargo audit`
 - `cargo machete`
-- `cargo deny check`, once dependency, license, and advisory policy is configured
+- `cargo deny check`
 - `cargo udeps`, periodically if nightly is acceptable
 - Markdown linting for README, docs, changelog, and contribution docs
 - Spell checking for public docs if the project has enough documentation to justify it

@@ -71,8 +71,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-audit,cargo-hack,cargo-machete,cargo-minimal-versions
+          tool: cargo-audit,cargo-deny,cargo-hack,cargo-machete,cargo-minimal-versions
       - run: cargo audit
+      - run: cargo deny check
       - run: cargo machete
       - run: cargo minimal-versions check --direct --workspace --all-targets --all-features
 

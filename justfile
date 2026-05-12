@@ -34,13 +34,16 @@ package:
 audit:
     cargo audit
 
+deny:
+    cargo deny check
+
 machete:
     cargo machete
 
 minimal-versions:
     cargo minimal-versions check --direct --workspace --all-targets --all-features
 
-ci: fmt-check check test clippy doc docs-rs markdown package audit machete minimal-versions
+ci: fmt-check check test clippy doc docs-rs markdown package audit deny machete minimal-versions
 
 demo-gif:
     mkdir -p target/vhs
