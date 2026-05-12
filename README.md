@@ -146,6 +146,7 @@ The follow-up work is tracked in the
 
 ## Maintainer Documentation
 
+- [Architecture overview](docs/architecture.md)
 - [Design and quality standards](docs/standards.md)
 - [Release checklist](docs/release-checklist.md)
 
