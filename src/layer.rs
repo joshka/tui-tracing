@@ -1,9 +1,9 @@
 //! [`tracing_subscriber`] capture layer.
 //!
 //! [`TraceLayer`] records tracing spans and events into [`crate::TraceStore`]. It
-//! intentionally does not decide what the TUI shows. Applications can combine it
-//! with ordinary [`tracing_subscriber`] capture filters and then apply
-//! [`crate::TraceFilter`] at display time.
+//! does not decide what the TUI shows. Applications can combine it with ordinary
+//! [`tracing_subscriber`] capture filters and then apply [`crate::TraceFilter`] at
+//! display time.
 //!
 //! # Common Workflow
 //!

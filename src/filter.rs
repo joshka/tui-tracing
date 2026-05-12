@@ -20,8 +20,8 @@ use crate::store::TraceSnapshot;
 
 /// Display-time event filter.
 ///
-/// Filters are intentionally independent from [`tracing_subscriber`] filters. They do
-/// not affect capture, and changing them never loses retained events.
+/// Filters are independent from [`tracing_subscriber`] filters. They do not affect
+/// capture, and changing them never loses retained events.
 ///
 /// Matching is substring-based for targets, text, span names, and field values.
 /// Level matching keeps events whose level is at least as severe as the configured

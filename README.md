@@ -10,9 +10,8 @@
 
 ![tui-tracing demo](https://vhs.charm.sh/vhs-36dyKlTisqFpgEBDmaioC.gif)
 
-It is inspired by `tui-logger`, but it does not treat tracing as log compatibility glue. The
-crate captures spans, events, fields, timing, and span context directly from [`tracing-subscriber`]
-so a running TUI can inspect more information than it currently displays.
+Its subscriber layer captures spans, events, fields, timing, and span context so a running TUI can
+inspect structured trace data without leaving the terminal UI.
 
 Status: experimental pre-release API.
 
@@ -63,7 +62,38 @@ cargo run --example basic
 ```
 
 The `basic` example emits periodic tracing events and wires a few keys to filtering and scrollback.
-The fuller `demo` example is intentionally more visual because it also feeds the README GIF.
+The fuller `demo` example is more visual because it also feeds the README GIF.
+
+## Relationship To tui-logger
+
+`tui-tracing` is inspired by [`tui-logger`], which is a mature Ratatui log viewer with `log`,
+`slog`, and [`tracing_subscriber::Layer`] support. `tui-logger` is the better fit when an
+application wants an established logging console with target-level controls, capture-level
+controls, environment-filter integration, file logging, custom formatters, and a target selector
+widget.
+
+This crate is narrower. It focuses on making native [`tracing`] output feel like the default
+[`tracing_subscriber::fmt`] event stream inside a Ratatui application: timestamp, level, target,
+message, structured fields, and optional span context.
+
+Use `tui-tracing` when the important part is the structured tracing data and a compact fmt-like
+event stream. Use `tui-logger` when the important part is a full logging widget with built-in
+target and level management across logging backends.
+
+## Compatibility
+
+- MSRV: Rust 1.88.
+- Ratatui: 0.30.
+- Backend: the library API is a Ratatui widget. The examples use crossterm through Ratatui's
+  `ratatui::run` helper.
+
+## More Documentation
+
+- [API documentation](https://docs.rs/tui-tracing/latest/tui_tracing/) explains the runtime model,
+  viewer state, filtering, retention, event rows, and current limitations.
+- [Architecture overview](docs/architecture.md) describes where behavior belongs in the crate.
+- [Roadmap](https://github.com/joshka/tui-tracing/issues/22) tracks planned viewer affordances such
+  as aggregation and secondary views.
 
 ## License
 
@@ -74,152 +104,8 @@ Licensed under either of:
 
 at your option.
 
-## Compared To Log Viewers
-
-Use `tui-tracing` when your application already uses [`tracing`] or wants structured runtime
-diagnostics in its own UI. The crate captures native spans, events, fields, targets, source
-locations, and span context through [`tracing-subscriber`].
-
-This is different from crates that display plain `log` records. `tui-tracing` does not adapt
-through the `log` crate and does not install a subscriber for you. It also does not replace normal
-file or stdout logging: applications can install `TraceLayer` beside a regular
-[`tracing_subscriber::fmt`] layer when they want both an in-app view and durable logs.
-
-## Compatibility
-
-- MSRV: Rust 1.88.
-- Ratatui: 0.30.
-- Backend: the library API is a Ratatui widget. The examples use crossterm through Ratatui's
-  `ratatui::run` helper.
-
-## Design Direction
-
-The default viewer is event-stream-first. It should feel familiar to users of the
-[`tracing_subscriber::fmt`] formatter: colored levels, readable timestamps, messages, structured
-fields, and optional compact span context.
-
-Compact rows default to a short local timestamp so they fit inside an application pane:
-
-```text
-12:04:31.123 INFO  app::net: connected latency_ms=12
-```
-
-Compact rows hide span context by default so target, message, and fields stay readable.
-Applications can enable span context with `TraceViewer::set_show_span_context` or `FormatOptions`
-when inline span names are worth the width. When target, optional span context, message, or fields
-exceed the rendered width, compact rows use `...` to mark overflow. Span context truncates from the
-left so the innermost span remains visible when possible. The selected-event detail remains
-complete.
-
-Selected-event detail keeps the complete timestamp, target, module path, source location, promoted
-message, event fields, span stack, span fields, lifecycle state, and timing data. Its layout and
-styling should communicate ownership: event fields are nested under the event, span fields are
-nested under their span, and the span stack is context for the selected event.
-
-Span trees, timing summaries, and aggregation are secondary views built from the same retained
-records. Nesting is important data, but it should not dominate the first diagnostic view.
-
-## Runtime Model
-
-`tui-tracing` separates capture from display:
-
-1. [`TraceLayer`] captures structured tracing records into [`TraceStore`].
-1. The application keeps the store in runtime state.
-1. [`TraceViewer`] renders retained records in a [`ratatui`] widget.
-1. [`TraceFilter`] changes what is shown without losing captured data.
-
-Capture-time filtering is still useful for cost control. Display-time filtering is the main
-interaction model for diagnostics inside a running TUI.
-
-[`TraceStore::status`] exposes cheap storage counters for status bars and diagnostics: configured
-capacity, retained events, retained spans, captured events, accepted events, evicted events, and
-dropped events. These counters describe storage behavior before display-time filtering, so hiding
-an event with [`TraceFilter`] does not change the captured, evicted, or dropped totals. The returned
-status also has helpers for common status-bar decisions such as empty state, remaining event
-capacity, capacity pressure, and whether any captured event has been lost.
-
-## Application Wiring
-
-```rust
-use ratatui::DefaultTerminal;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tui_tracing::{TraceFilter, TraceLayer, TraceViewer};
-
-let (layer, store) = TraceLayer::new();
-tracing_subscriber::registry().with(layer).init();
-
-let mut viewer = TraceViewer::new(store);
-viewer.set_filter(TraceFilter::all().with_min_level(tracing::Level::INFO));
-
-tracing::info!(target: "demo", peer = "alpha", "connected");
-
-fn render(terminal: &mut DefaultTerminal, viewer: &mut TraceViewer) -> std::io::Result<()> {
-    terminal.draw(|frame| frame.render_widget(viewer, frame.area()))?;
-    Ok(())
-}
-```
-
-[`TraceViewer`] intentionally implements [`Widget`] for `&mut TraceViewer`. The viewer must update
-scroll state during rendering because the tail position depends on the rendered height and the
-current number of visible rows. That value is only known once the host application chooses a
-layout area for the widget.
-
-Applications can keep [`TraceViewer`] directly in app state, mutate it through methods such as
-`set_filter`, `scroll_up`, `scroll_down`, `page_up`, `page_down`, `jump_to_oldest`, and
-`jump_to_newest`, and render `&mut viewer` in the area assigned to trace output. The API avoids
-[`StatefulWidget`] while preserving follow-tail and scrollback behavior.
-
-Applications can call [`TraceViewer::status`] to build their own status bars without duplicating
-viewer logic. The returned status includes follow-tail versus scrollback mode, the last computed
-scroll offsets, visible and hidden event counts after display filtering, selected visible row
-state, the active filter, and the underlying `TraceStoreStatus`.
-
-Selection is tracked by retained event id and interpreted through the active display filter.
-Applications can move selection with `select_next`, `select_previous`, `select_first`, and
-`select_last`, then read `selected_event` or [`TraceViewer::status`] for app-owned detail views.
-For rendering full selected-event context, call [`TraceViewer::selected_detail`] and render the returned
-[`TraceEventDetail`] into a caller-owned pane. Compact row rendering remains fmt-like and optimized
-for scanning: short timestamp, level, target, message, and fields.
-[`FormatOptions`] can switch compact rows to full RFC 3339 timestamps or a custom [`chrono`] format.
-[`TraceViewer::set_show_span_context`] enables inline span context for applications that want
-fmt-style span names in compact rows.
-[`TraceViewer::set_show_source_locations`] enables source file and line display in compact rows
-without rebuilding the viewer.
-Detail rendering is where full fields, source location, and span-stack context live. Its styling
-uses a small palette and indentation to show how metadata, fields, and span context relate without
-turning the pane into a color legend.
-[`TraceEventDetail::text`] exposes the formatted detail text for applications that need their
-own scroll state, borders, titles, or layout chrome around the detail pane.
-
-## Current Public Path
-
-- [`TraceLayer`]: subscriber layer for capture.
-- [`TraceStore`]: shared runtime buffer of retained records and storage counters.
-- [`TraceViewer`]: [`ratatui`] event-stream viewer.
-- [`TraceEventDetail`]: renderable selected-event detail.
-- [`TraceFilter`]: display-time event filter.
-- [`FormatOptions`]: compact row formatting options.
-- [`TimingLayer`]: optional span busy/idle timing layer.
-- [`TimingState`]: span timing lifecycle state.
-
-The demo in `examples/demo.rs` is intentionally small and should stay aligned with the public API
-path above.
-
-## Known Limitations
-
-- Aggregation of repeated events is not implemented yet.
-- The default viewer is intentionally simple and does not yet expose secondary span-tree or timing
-  views.
-- The timing layer remains local to this crate. The related upstream [`tracing`] PR did not appear
-  to land as a stable [`tracing-subscriber`] API.
-- Grouped rows are planned follow-up work rather than part of the initial viewer surface.
-
-The follow-up work is tracked in the
-[main trace viewer roadmap](https://github.com/joshka/tui-tracing/issues/22).
-
 ## Maintainer Documentation
 
-- [Architecture overview](docs/architecture.md)
 - [Design and quality standards](docs/standards.md)
 - [Release checklist](docs/release-checklist.md)
 
@@ -229,27 +115,8 @@ The follow-up work is tracked in the
 just ci
 ```
 
-The `rustfmt.toml` matches the formatting posture used by `../async-tty` and requires nightly
-rustfmt for the configured unstable formatting options.
-
-[`formatoptions`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.FormatOptions.html
-[`chrono`]: https://docs.rs/chrono/latest/chrono/
 [`ratatui`]: https://docs.rs/ratatui/latest/ratatui/
-[`statefulwidget`]: https://docs.rs/ratatui/latest/ratatui/widgets/trait.StatefulWidget.html
-[`timinglayer`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TimingLayer.html
-[`timingstate`]: https://docs.rs/tui-tracing/latest/tui_tracing/enum.TimingState.html
-[`traceeventdetail`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceEventDetail.html
-[`traceeventdetail::text`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceEventDetail.html#method.text
-[`tracefilter`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceFilter.html
-[`tracelayer`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceLayer.html
-[`tracestore`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceStore.html
-[`tracestore::status`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceStore.html#method.status
-[`traceviewer`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceViewer.html
-[`traceviewer::selected_detail`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceViewer.html#method.selected_detail
-[`traceviewer::set_show_source_locations`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceViewer.html#method.set_show_source_locations
-[`traceviewer::set_show_span_context`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceViewer.html#method.set_show_span_context
-[`traceviewer::status`]: https://docs.rs/tui-tracing/latest/tui_tracing/struct.TraceViewer.html#method.status
 [`tracing`]: https://docs.rs/tracing/latest/tracing/
-[`tracing-subscriber`]: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/
+[`tracing_subscriber::Layer`]: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/layer/trait.Layer.html
 [`tracing_subscriber::fmt`]: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/
-[`widget`]: https://docs.rs/ratatui/latest/ratatui/widgets/trait.Widget.html
+[`tui-logger`]: https://github.com/gin66/tui-logger

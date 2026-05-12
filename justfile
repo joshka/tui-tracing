@@ -1,50 +1,50 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-fmt:
-    cargo +nightly fmt --all
+fmt *args:
+    cargo +nightly fmt --all {{ args }}
 
-fmt-check:
-    cargo +nightly fmt --all -- --check
+fmt-check *args:
+    cargo +nightly fmt --all -- --check {{ args }}
 
-check:
-    cargo check --workspace --all-targets --all-features
-    cargo check --workspace --all-targets --no-default-features
+check *args:
+    cargo check --workspace --all-targets --all-features {{ args }}
+    cargo check --workspace --all-targets --no-default-features {{ args }}
 
-test:
-    cargo test --workspace --all-features
-    cargo test --doc --workspace --all-features
-    cargo test --examples --workspace --all-features
+test *args:
+    cargo test --workspace --all-features {{ args }}
+    cargo test --doc --workspace --all-features {{ args }}
+    cargo test --examples --workspace --all-features {{ args }}
 
-clippy:
-    cargo +stable clippy --workspace --all-features --all-targets -- -D warnings
-    cargo +beta clippy --workspace --all-features --all-targets -- -D warnings
+clippy *args:
+    cargo +stable clippy --workspace --all-features --all-targets {{ args }} -- -D warnings
+    cargo +beta clippy --workspace --all-features --all-targets {{ args }} -- -D warnings
 
-doc:
-    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps
+doc *args:
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps {{ args }}
 
-docs-rs:
-    RUSTDOCFLAGS="-D warnings" cargo +nightly docs-rs
+docs-rs *args:
+    RUSTDOCFLAGS="-D warnings" cargo +nightly docs-rs {{ args }}
 
-markdown:
-    markdownlint-cli2 README.md "docs/**/*.md"
+markdown *args:
+    markdownlint-cli2 README.md "docs/**/*.md" {{ args }}
 
-package:
-    cargo package --workspace --allow-dirty
+package *args:
+    cargo package --workspace --allow-dirty {{ args }}
 
-audit:
-    cargo audit
+audit *args:
+    cargo audit {{ args }}
 
-deny:
-    cargo deny check
+deny *args:
+    cargo deny check {{ args }}
 
-machete:
-    cargo machete
+machete *args:
+    cargo machete {{ args }}
 
-minimal-versions:
-    cargo minimal-versions check --direct --workspace --all-targets --all-features
+minimal-versions *args:
+    cargo minimal-versions check --direct --workspace --all-targets --all-features {{ args }}
 
 ci: fmt-check check test clippy doc docs-rs markdown package audit deny machete minimal-versions
 
-demo-gif:
+demo-gif *args:
     mkdir -p target/vhs
-    env -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE -u FORCE_COLOR vhs tapes/demo.tape
+    env -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE -u FORCE_COLOR vhs tapes/demo.tape {{ args }}
