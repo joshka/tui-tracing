@@ -11,12 +11,77 @@ so a running TUI can inspect more information than it currently displays.
 
 Status: experimental pre-release API.
 
+## Quick Start
+
+Add the crate, install the tracing layer once, keep the viewer in app state, and render it like a
+normal Ratatui widget:
+
+```sh
+cargo add tui-tracing ratatui tracing tracing-subscriber
+```
+
+```rust
+use ratatui::DefaultTerminal;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tui_tracing::{TraceLayer, TraceViewer};
+
+fn main() -> std::io::Result<()> {
+    let (layer, store) = TraceLayer::new();
+    tracing_subscriber::registry().with(layer).init();
+
+    let mut app = App {
+        traces: TraceViewer::new(store),
+    };
+    ratatui::run(|terminal| app.run(terminal))
+}
+
+struct App {
+    traces: TraceViewer,
+}
+
+impl App {
+    fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
+        tracing::info!(target: "demo", peer = "alpha", "connected");
+        terminal.draw(|frame| frame.render_widget(&mut self.traces, frame.area()))?;
+        Ok(())
+    }
+}
+```
+
+Run the small application-style example with:
+
+```sh
+cargo run --example basic
+```
+
+The `basic` example uses the Ratatui 0.30 `ratatui::run` lifecycle, emits periodic tracing events,
+and wires a few keys to filtering and scrollback. The fuller `demo` example is intentionally more
+visual because it also feeds the README GIF.
+
 Licensed under either of:
 
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.
+
+## Compared To Log Viewers
+
+Use `tui-tracing` when your application already uses [`tracing`] or wants structured runtime
+diagnostics in its own UI. The crate captures native spans, events, fields, targets, source
+locations, and span context through [`tracing-subscriber`].
+
+This is different from crates that display plain `log` records. `tui-tracing` does not adapt
+through the `log` crate and does not install a subscriber for you. It also does not replace normal
+file or stdout logging: applications can install `TraceLayer` beside a regular
+[`tracing_subscriber::fmt`] layer when they want both an in-app view and durable logs.
+
+## Compatibility
+
+- MSRV: Rust 1.88.
+- Ratatui: 0.30.
+- Backend: the library API is a Ratatui widget. The examples use crossterm through Ratatui's
+  `ratatui::run` helper.
 
 ## Design Direction
 
@@ -64,10 +129,10 @@ an event with [`TraceFilter`] does not change the captured, evicted, or dropped 
 status also has helpers for common status-bar decisions such as empty state, remaining event
 capacity, capacity pressure, and whether any captured event has been lost.
 
-## Basic Usage
+## Application Wiring
 
 ```rust
-use ratatui::{backend::TestBackend, Terminal};
+use ratatui::DefaultTerminal;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tui_tracing::{TraceFilter, TraceLayer, TraceViewer};
 
@@ -79,11 +144,10 @@ viewer.set_filter(TraceFilter::all().with_min_level(tracing::Level::INFO));
 
 tracing::info!(target: "demo", peer = "alpha", "connected");
 
-let backend = TestBackend::new(80, 4);
-let mut terminal = Terminal::new(backend).unwrap();
-terminal
-    .draw(|frame| frame.render_widget(&mut viewer, frame.area()))
-    .unwrap();
+fn render(terminal: &mut DefaultTerminal, viewer: &mut TraceViewer) -> std::io::Result<()> {
+    terminal.draw(|frame| frame.render_widget(viewer, frame.area()))?;
+    Ok(())
+}
 ```
 
 [`TraceViewer`] intentionally implements [`Widget`] for `&mut TraceViewer`. The viewer must update

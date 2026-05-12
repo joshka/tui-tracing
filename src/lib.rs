@@ -14,27 +14,49 @@
 //!
 //! # Start Here
 //!
-//! Install [`TraceLayer`] in your subscriber, keep the returned [`TraceStore`] in
-//! application state, and render a [`TraceViewer`] in your UI.
+//! Install [`TraceLayer`] in your subscriber, keep a [`TraceViewer`] in application
+//! state, and render it in the area where your application wants trace output.
 //!
 //! ```
-//! use ratatui::{backend::TestBackend, Terminal};
+//! use ratatui::DefaultTerminal;
 //! use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 //! use tui_tracing::{TraceLayer, TraceViewer};
 //!
 //! let (layer, store) = TraceLayer::new();
 //! let _ = tracing_subscriber::registry().with(layer).try_init();
 //!
-//! tracing::info!(target: "demo", answer = 42, "ready");
-//!
 //! let mut viewer = TraceViewer::new(store);
-//! let backend = TestBackend::new(80, 4);
-//! let mut terminal = Terminal::new(backend).unwrap();
-//! terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).unwrap();
+//!
+//! fn render(terminal: &mut DefaultTerminal, viewer: &mut TraceViewer) -> std::io::Result<()> {
+//!     terminal.draw(|frame| frame.render_widget(viewer, frame.area()))?;
+//!     Ok(())
+//! }
+//!
+//! tracing::info!(target: "demo", answer = 42, "ready");
 //! ```
 //!
-//! For a runnable version of this workflow, run `cargo run --example basic`. For
-//! the interactive demo, run `cargo run --example demo`.
+//! For a runnable application-style version of this workflow, run
+//! `cargo run --example basic`. For the visual demo used by the README GIF, run
+//! `cargo run --example demo`.
+//!
+//! # When To Use It
+//!
+//! Use this crate when your application already uses [`tracing`] or wants
+//! structured runtime diagnostics in its own [`ratatui`] UI. `tui-tracing` captures
+//! native spans, events, fields, targets, source locations, and span context through
+//! [`tracing_subscriber`].
+//!
+//! This is not a `log` compatibility viewer and does not install a subscriber for
+//! you. It can be installed beside a normal
+//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt) layer when an
+//! application wants both an in-app trace view and ordinary file or stdout logs.
+//!
+//! # Compatibility
+//!
+//! - MSRV: Rust 1.88.
+//! - Ratatui: 0.30.
+//! - Backend: the public API is a Ratatui widget. The examples use crossterm through Ratatui's
+//!   `ratatui::run` helper.
 //!
 //! # Core Concepts
 //!
