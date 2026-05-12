@@ -1,5 +1,10 @@
 # Tui-tracing
 
+[![CI](https://github.com/joshka/tui-tracing/actions/workflows/ci.yml/badge.svg)](https://github.com/joshka/tui-tracing/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/tui-tracing.svg)](https://crates.io/crates/tui-tracing)
+[![Documentation](https://docs.rs/tui-tracing/badge.svg)](https://docs.rs/tui-tracing)
+[![License](https://img.shields.io/crates/l/tui-tracing.svg)](#license)
+
 `tui-tracing` is a runtime store and widget for displaying [`tracing`] events inside
 [`ratatui`]-based applications.
 
@@ -21,7 +26,7 @@ cargo add tui-tracing ratatui tracing tracing-subscriber
 ```
 
 ```rust
-use ratatui::DefaultTerminal;
+use ratatui::{DefaultTerminal, Frame};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tui_tracing::{TraceLayer, TraceViewer};
 
@@ -29,9 +34,8 @@ fn main() -> std::io::Result<()> {
     let (layer, store) = TraceLayer::new();
     tracing_subscriber::registry().with(layer).init();
 
-    let mut app = App {
-        traces: TraceViewer::new(store),
-    };
+    let traces = TraceViewer::new(store);
+    let mut app = App { traces };
     ratatui::run(|terminal| app.run(terminal))
 }
 
@@ -42,8 +46,12 @@ struct App {
 impl App {
     fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         tracing::info!(target: "demo", peer = "alpha", "connected");
-        terminal.draw(|frame| frame.render_widget(&mut self.traces, frame.area()))?;
+        terminal.draw(|frame| self.render(frame))?;
         Ok(())
+    }
+
+    fn render(&mut self, frame: &mut Frame) {
+        frame.render_widget(&mut self.traces, frame.area());
     }
 }
 ```
@@ -54,9 +62,10 @@ Run the small application-style example with:
 cargo run --example basic
 ```
 
-The `basic` example uses the Ratatui 0.30 `ratatui::run` lifecycle, emits periodic tracing events,
-and wires a few keys to filtering and scrollback. The fuller `demo` example is intentionally more
-visual because it also feeds the README GIF.
+The `basic` example emits periodic tracing events and wires a few keys to filtering and scrollback.
+The fuller `demo` example is intentionally more visual because it also feeds the README GIF.
+
+## License
 
 Licensed under either of:
 
