@@ -1,55 +1,232 @@
 //! # tui-tracing
 //!
-//! `tui-tracing` provides a runtime store and [`ratatui`] widget for displaying
-//! [`tracing`] events inside a [`ratatui`]-based application. It captures native
-//! tracing spans and events, retains them in [`TraceStore`], and renders them as a
-//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt)-style event stream with
-//! [`TraceViewer`]. It is intentionally tracing-first: it does not adapt through the `log` crate,
-//! and display-time filtering is separate from subscriber capture filtering.
+//! `tui-tracing` provides a runtime store and [`ratatui`] widget for showing
+//! [`tracing`] output inside a TUI application.
 //!
-//! Use this crate when an application needs tracing diagnostics available inside
-//! its own [`ratatui`] UI at runtime. The primary path is:
-//! capture with [`TraceLayer`], retain in [`TraceStore`], filter with
-//! [`TraceFilter`], and render with [`TraceViewer`].
+//! The default viewer is an event stream shaped like
+//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt): timestamp, level,
+//! target, message, and structured fields. The store keeps native tracing records
+//! behind that compact view so applications can inspect span context, source
+//! locations, timing data, and selected-event detail without leaving the terminal UI.
 //!
 //! # Start Here
 //!
-//! Install [`TraceLayer`] in your subscriber, keep a [`TraceViewer`] in application
-//! state, and render it in the area where your application wants trace output.
+//! Install [`TraceLayer`] in your subscriber, keep [`TraceViewer`] in application
+//! state, and render it in the part of your layout that should show trace output.
 //!
-//! ```
-//! use ratatui::DefaultTerminal;
+//! ```no_run
+//! use ratatui::{DefaultTerminal, Frame};
 //! use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 //! use tui_tracing::{TraceLayer, TraceViewer};
 //!
+//! # fn main() -> std::io::Result<()> {
 //! let (layer, store) = TraceLayer::new();
-//! let _ = tracing_subscriber::registry().with(layer).try_init();
+//! tracing_subscriber::registry().with(layer).init();
 //!
-//! let mut viewer = TraceViewer::new(store);
+//! let traces = TraceViewer::new(store);
+//! let mut app = App { traces };
+//! ratatui::run(|terminal| app.run(terminal))
+//! # }
 //!
-//! fn render(terminal: &mut DefaultTerminal, viewer: &mut TraceViewer) -> std::io::Result<()> {
-//!     terminal.draw(|frame| frame.render_widget(viewer, frame.area()))?;
-//!     Ok(())
+//! struct App {
+//!     traces: TraceViewer,
 //! }
 //!
-//! tracing::info!(target: "demo", answer = 42, "ready");
+//! impl App {
+//!     fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
+//!         tracing::info!(target: "demo", peer = "alpha", "connected");
+//!         terminal.draw(|frame| self.render(frame))?;
+//!         Ok(())
+//!     }
+//!
+//!     fn render(&mut self, frame: &mut Frame) {
+//!         frame.render_widget(&mut self.traces, frame.area());
+//!     }
+//! }
 //! ```
 //!
-//! For a runnable application-style version of this workflow, run
-//! `cargo run --example basic`. For the visual demo used by the README GIF, run
-//! `cargo run --example demo`.
+//! For a runnable application-style example, run `cargo run --example basic`.
+//! For a more visual demo, run `cargo run --example demo`.
 //!
 //! # When To Use It
 //!
-//! Use this crate when your application already uses [`tracing`] or wants
-//! structured runtime diagnostics in its own [`ratatui`] UI. `tui-tracing` captures
-//! native spans, events, fields, targets, source locations, and span context through
-//! [`tracing_subscriber`].
+//! Use this crate when a Ratatui application already emits [`tracing`] events and
+//! should expose those diagnostics inside the UI. It is useful for developer tools,
+//! demos, long-running terminal applications, and debug panes where switching to a
+//! separate log file or terminal stream would break the workflow.
 //!
-//! This is not a `log` compatibility viewer and does not install a subscriber for
-//! you. It can be installed beside a normal
-//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt) layer when an
-//! application wants both an in-app trace view and ordinary file or stdout logs.
+//! `tui-tracing` does not install a subscriber for you, does not manage terminal
+//! raw mode, and does not replace normal file or stdout logging. Install
+//! [`TraceLayer`] beside a regular
+//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt) layer when the
+//! application wants both in-app diagnostics and durable logs.
+//!
+//! # How The Pieces Fit
+//!
+//! The crate separates capture, storage, filtering, and rendering:
+//!
+//! - [`TraceLayer`] is the [`tracing_subscriber::Layer`] that receives tracing callbacks and writes
+//!   records into a [`TraceStore`].
+//! - [`TraceStore`] is a cloneable, synchronized buffer of retained events and spans. It is the
+//!   handoff between subscriber callbacks and UI rendering.
+//! - [`TraceViewer`] owns one Ratatui view of a store: scrollback, follow-tail mode, selection, row
+//!   options, and the active [`TraceFilter`].
+//! - [`TraceFilter`] hides or shows retained events at display time. Changing it does not remove
+//!   records from the store.
+//!
+//! This split gives applications two levels of filtering. Use ordinary
+//! [`tracing_subscriber`] filters when noisy records should never reach the store.
+//! Use [`TraceFilter`] when the user is exploring records that have already been
+//! captured.
+//!
+//! ```no_run
+//! use tracing_subscriber::Layer;
+//! use tracing_subscriber::filter::LevelFilter;
+//! use tracing_subscriber::layer::SubscriberExt;
+//! use tui_tracing::{TraceFilter, TraceLayer, TraceViewer};
+//!
+//! let (layer, store) = TraceLayer::new();
+//! let subscriber = tracing_subscriber::registry()
+//!     // Capture-time filter: DEBUG never reaches TraceStore.
+//!     .with(layer.with_filter(LevelFilter::INFO));
+//!
+//! let mut viewer = TraceViewer::new(store);
+//! // Display-time filter: retained INFO events can be hidden or shown later.
+//! viewer.set_filter(TraceFilter::all().with_min_level(tracing::Level::WARN));
+//! # let _ = subscriber;
+//! ```
+//!
+//! # Driving The Viewer
+//!
+//! [`TraceViewer`] is application state and implements
+//! [`ratatui::widgets::Widget`] for `&mut TraceViewer`. Rendering updates the
+//! scroll bounds because follow-tail and scrollback depend on the final layout
+//! area.
+//!
+//! Applications decide their own key map and call viewer methods from input
+//! handlers:
+//!
+//! ```
+//! use tui_tracing::{TraceStore, TraceViewer};
+//!
+//! let store = TraceStore::default();
+//! let mut viewer = TraceViewer::new(store);
+//!
+//! viewer.scroll_up(1);
+//! viewer.page_down();
+//! viewer.jump_to_newest();
+//!
+//! viewer.select_next();
+//! viewer.reveal_selection();
+//! ```
+//!
+//! Use [`TraceViewer::status`] for status bars and [`TraceViewer::selected_detail`]
+//! for a caller-owned detail pane:
+//!
+//! ```
+//! use tracing::subscriber;
+//! use tracing_subscriber::Registry;
+//! use tracing_subscriber::layer::SubscriberExt;
+//! use tui_tracing::{TraceLayer, TraceViewer};
+//!
+//! let (layer, store) = TraceLayer::new();
+//! let subscriber = Registry::default().with(layer);
+//!
+//! subscriber::with_default(subscriber, || {
+//!     tracing::warn!(status = 503, "retrying request");
+//! });
+//!
+//! let mut viewer = TraceViewer::new(store);
+//! viewer.select_first();
+//!
+//! let status = viewer.status();
+//! assert_eq!(status.visible_events, 1);
+//!
+//! let detail = viewer.selected_detail().expect("selected event");
+//! assert!(detail.text().to_string().contains("retrying request"));
+//! ```
+//!
+//! # Event Rows And Detail
+//!
+//! The default event row uses a short local timestamp so recent events fit inside
+//! an application pane:
+//!
+//! <pre><code><span style="color:#7f8490">12:04:31.123</span> <span
+//! style="color:#8bd5ca;font-weight:700">INFO </span> <span style="color:#7f8490">app::net:</span>
+//! connected peer=alpha latency_ms=12 <span style="color:#7f8490">12:04:32.018</span> <span
+//! style="color:#eed49f;font-weight:700">WARN </span> <span style="color:#7f8490">app::sync:</span>
+//! retrying attempt=2 error=timeout</code></pre>
+//!
+//! Span context and source locations are captured even when compact rows hide
+//! them. Applications can show those fields inline when the extra width is useful:
+//!
+//! ```
+//! use tui_tracing::{TraceStore, TraceViewer};
+//!
+//! let store = TraceStore::default();
+//! let mut viewer = TraceViewer::new(store);
+//!
+//! viewer.set_show_span_context(true);
+//! viewer.set_show_source_locations(true);
+//! ```
+//!
+//! Selected-event detail is where complete metadata, fields, span stack, span
+//! fields, lifecycle state, and timing live. Applications can render
+//! [`TraceEventDetail`] directly or use [`TraceEventDetail::text`] when they want
+//! their own borders, layout, or scroll state.
+//!
+//! # Retention And Status
+//!
+//! Event retention is bounded. [`TraceStore::default`] keeps the newest 10,000
+//! events, and [`TraceStore::with_capacity`] can choose a different event
+//! capacity. When the event buffer is full, the oldest retained event is evicted
+//! before the new event is inserted. A zero-capacity store counts captured events
+//! as dropped instead of retaining them.
+//!
+//! Span records are retained for context until the store is cleared. This keeps
+//! selected-event detail useful even after spans close, but it also means
+//! long-running applications should choose capacity and clearing behavior
+//! deliberately.
+//!
+//! [`TraceStore::status`] exposes storage counters before display-time filtering:
+//! configured capacity, retained events, retained spans, captured events, accepted
+//! events, evicted events, and dropped events. Hiding an event with
+//! [`TraceFilter`] does not change those counters. [`TraceViewer::status`] adds
+//! view-specific state such as follow-tail versus scrollback mode, scroll offsets,
+//! visible and hidden event counts, selection, and the active filter.
+//!
+//! # Optional Timing
+//!
+//! [`TimingLayer`] can record span busy and idle timing. Install it alongside
+//! [`TraceLayer`] when span timing matters for detail views or custom diagnostics:
+//!
+//! ```no_run
+//! use tracing_subscriber::layer::SubscriberExt;
+//! use tracing_subscriber::util::SubscriberInitExt;
+//! use tui_tracing::{TimingLayer, TraceLayer};
+//!
+//! let (trace_layer, _store) = TraceLayer::new();
+//!
+//! tracing_subscriber::registry()
+//!     .with(TimingLayer)
+//!     .with(trace_layer)
+//!     .init();
+//! ```
+//!
+//! # What To Read Next
+//!
+//! - [`layer`] explains subscriber integration.
+//! - [`store`] documents retention, snapshots, clearing, and storage counters.
+//! - [`viewer`] documents scrolling, selection, status, detail rendering, and row controls.
+//! - [`filter`] documents display-time matching rules.
+//! - [`record`] and [`field`] define the retained record data available to custom views.
+//!
+//! # Current Scope
+//!
+//! The default viewer is event-stream-first. It is not a span tree, and
+//! aggregation of repeated events is not implemented yet. Future span-tree,
+//! timing-summary, and aggregation views should build on the same retained records
+//! without changing the compact event stream into the primary nesting view.
 //!
 //! # Compatibility
 //!
@@ -58,89 +235,10 @@
 //! - Backend: the public API is a Ratatui widget. The examples use crossterm through Ratatui's
 //!   `ratatui::run` helper.
 //!
-//! # Core Concepts
-//!
-//! - [`TraceLayer`] captures structured tracing records.
-//! - [`TraceStore`] retains those records for runtime inspection and exposes storage counters
-//!   through [`TraceStore::status`].
-//! - [`TraceFilter`] filters retained records at display time without losing data.
-//! - [`FormatOptions`] controls compact event-row formatting.
-//! - [`TraceViewer`] renders the event-stream view and owns scroll/filter state.
-//! - [`TraceEventDetail`] renders full detail for one selected event.
-//! - [`TimingLayer`] optionally records span busy/idle timing.
-//!
-//! # Module Map
-//!
-//! - [`layer`] owns [`tracing_subscriber`] integration.
-//! - [`store`] owns retained runtime data and storage counters.
-//! - [`viewer`] owns Ratatui rendering state.
-//! - [`filter`] owns display-time matching.
-//! - [`record`] owns captured event and span record shapes.
-//! - [`field`] owns structured field values.
-//!
-//! Span trees, timing summaries, and aggregation are secondary views built on the
-//! same stored records. The default view stays event-stream-first because recent
-//! event output is the diagnostic surface users already know from
-//! [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt).
-//!
-//! # Runtime And Lifecycle
-//!
-//! [`TraceLayer`] is a [`tracing_subscriber::Layer`]. It captures records only
-//! while installed in the active subscriber. [`TraceStore`] is an in-memory,
-//! cloneable handle backed by synchronization, so capture and rendering can run on
-//! different threads.
-//!
-//! [`TraceViewer`] is application state. It intentionally implements
-//! [`ratatui::widgets::Widget`] for `&mut TraceViewer` because scrollback and
-//! follow-tail state depend on the render area and can only be clamped correctly
-//! during rendering.
-//!
-//! This crate does not install a global subscriber by itself, does not spawn
-//! background tasks, and does not manage terminal raw mode. Those lifecycle
-//! concerns remain owned by the application.
-//!
 //! # Feature Flags
 //!
 //! This crate currently has no feature flags. All public APIs are available with
 //! default dependencies.
-//!
-//! # Viewer Surface
-//!
-//! [`TraceViewer`] renders the default event-stream surface. It is meant to
-//! answer one question quickly: what just happened in the application?
-//!
-//! The viewer is not a span tree. Span nesting is retained as event context and
-//! can be shown in compact rows when useful, but rows default to the same
-//! event-first shape as [`tracing_subscriber::fmt`](mod@tracing_subscriber::fmt):
-//! timestamp, level, target, message, and fields.
-//!
-//! Compact rows default to [`TimestampFormat::ShortLocal`] so recent events fit
-//! inside an application pane:
-//!
-//! ```text
-//! 12:04:31.123 INFO  app::net: connected peer=alpha latency_ms=12
-//! 12:04:32.018 WARN  app::sync: retrying attempt=2 error=timeout
-//! ```
-//!
-//! Display-time filtering is handled by [`TraceFilter`], so applications can
-//! narrow the visible events without dropping retained records. The current
-//! filter supports minimum level, target substring, span-name substring,
-//! free-text matching, and exact field-name plus text-value matching.
-//!
-//! [`TraceViewer`] owns the interaction state needed to render this stream:
-//! follow-tail versus scrollback mode, scroll position, selected event, source
-//! location visibility, span-context visibility, and the active filter.
-//! Applications bind their own input model to methods such as
-//! [`TraceViewer::scroll_up`], [`TraceViewer::scroll_down`],
-//! [`TraceViewer::page_up`], [`TraceViewer::page_down`],
-//! [`TraceViewer::jump_to_oldest`], [`TraceViewer::jump_to_newest`],
-//! [`TraceViewer::select_previous`], and [`TraceViewer::select_next`].
-//!
-//! [`TraceViewer::status`] exposes the current view state and underlying storage
-//! counters for application-owned status bars. [`TraceViewer::selected_detail`]
-//! returns the full detail surface for the selected event, including complete
-//! timestamp, target, module path, source location, event fields, span stack,
-//! span fields, lifecycle state, and timing when available.
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::bare_urls)]

@@ -42,8 +42,8 @@ const DEFAULT_EVENT_CAPACITY: usize = 10_000;
 ///
 /// The store is cheap to clone and is safe to share between the tracing layer and
 /// the TUI runtime. Events are retained in insertion order up to the configured
-/// capacity. Spans are retained while referenced by retained events or until the
-/// application explicitly clears the store.
+/// capacity. Span metadata is retained until the application explicitly clears the
+/// store.
 ///
 /// `TraceStore` does not perform I/O and does not spawn background work. Dropping
 /// the final clone drops all retained records.

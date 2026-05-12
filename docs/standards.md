@@ -55,8 +55,12 @@ easy to understand, audit, extend, and use correctly.
 ## Documentation Standards
 
 - Treat rustdoc as part of the API, not decoration.
+- Keep the README as a short crate entry page: purpose, quick start, compatibility, positioning or
+  comparison when useful, and links to deeper docs. Put detailed usage models in rustdoc unless the
+  material is maintainer-only.
 - The crate root should route new users with a purpose statement, first example, primary public
-  entry points, module map, feature flags, examples, and lifecycle notes.
+  entry points, module map, feature flags, examples, lifecycle notes, current limitations, and next
+  reading.
 - Every public module should answer what concept it owns, the main workflow, related modules, and
   what it intentionally does not own.
 - Every public type should explain what it represents, who should construct it, what invariants it
@@ -81,6 +85,17 @@ easy to understand, audit, extend, and use correctly.
 - Examples should show practical use, not just construction.
 - Prefer simple, obvious examples over elaborate mini-frameworks.
 - Use realistic examples that teach ownership, lifecycle, errors, or integration shape.
+- Runnable examples should resemble real application wiring. Visual demos may optimize for
+  screenshots or GIFs, but at least one small example should show the modern application lifecycle,
+  event loop, input path, and a realistic reason the crate is useful.
+- Document planned or roadmap-only behavior as current scope or future work, not as available API.
+  Do not describe unimplemented secondary views, retention policies, configuration, or output modes
+  as though users can rely on them today.
+- When a nearby crate, library, or established alternative exists, compare accurately and
+  charitably. Explain fit, scope, and tradeoffs instead of implying the local crate is universally
+  better.
+- Prefer direct ownership and boundary statements over apologetic design justifications. Explain
+  what a type owns, what it mutates, and what the application remains responsible for.
 - Markdown docs should be reserved for material that does not fit in rustdoc or README: quality
   standards, release procedure, design tradeoffs, and maintainer workflows.
 
@@ -104,6 +119,8 @@ easy to understand, audit, extend, and use correctly.
 - Prefer fast, deterministic CI jobs with clear failure modes.
 - Keep required checks strict enough that warnings, broken docs, stale examples, and formatting
   drift do not accumulate.
+- Local command recipes should allow focused variants where practical, such as forwarding extra
+  arguments to documentation or test commands, without weakening the default CI-like recipe.
 - Avoid noisy automation that produces dependency churn or low-signal failures.
 
 ## Baseline Local And CI Checks

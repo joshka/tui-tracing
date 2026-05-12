@@ -99,10 +99,9 @@ Put behavior in `TraceViewer` when it affects default viewer interaction or rend
 - Rendering compact rows and selected-row styling.
 - Producing selected-event detail data for caller-owned detail panes.
 
-`TraceViewer` intentionally implements `Widget` for `&mut TraceViewer` because scroll bounds depend
-on the final render area. Keep terminal raw mode, event loops, key maps, panes, borders, and status
-bar composition in the host application or demo unless the library has a reusable primitive to
-expose.
+`TraceViewer` implements `Widget` for `&mut TraceViewer` because scroll bounds depend on the final
+render area. Keep terminal raw mode, event loops, key maps, panes, borders, and status bar
+composition in the host application or demo unless the library has a reusable primitive to expose.
 
 ## Demo And Application Concerns
 

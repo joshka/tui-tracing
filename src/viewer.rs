@@ -932,9 +932,9 @@ pub enum TraceScrollMode {
 
 /// Structured status summary for app-owned trace viewer chrome.
 ///
-/// This type intentionally carries data, not formatted text. Applications can use
-/// it to build status bars, headers, telemetry, or tests without coupling to the
-/// library's demo wording.
+/// This type carries data, not formatted text. Applications can use it to build
+/// status bars, headers, telemetry, or tests without coupling to the library's
+/// demo wording.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceViewStatus {
     /// Current scroll behavior.
