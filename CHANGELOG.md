@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/joshka/tui-tracing/compare/v0.2.3...v0.2.4) - 2026-05-12
+
+### Other
+
+- Improve docs landing pages ([#62](https://github.com/joshka/tui-tracing/pull/62))
+- Add README status badges ([#60](https://github.com/joshka/tui-tracing/pull/60))
+
 ## [0.2.3](https://github.com/joshka/tui-tracing/compare/v0.2.2...v0.2.3) - 2026-05-12
 
 ### Other
