@@ -3,7 +3,7 @@
 `tui-tracing` is a runtime store and widget for displaying [`tracing`] events inside
 [`ratatui`]-based applications.
 
-![tui-tracing demo](https://github.com/joshka/tui-tracing/releases/latest/download/tui-tracing-demo.gif)
+![tui-tracing demo](https://vhs.charm.sh/vhs-36dyKlTisqFpgEBDmaioC.gif)
 
 It is inspired by `tui-logger`, but it does not treat tracing as log compatibility glue. The
 crate captures spans, events, fields, timing, and span context directly from [`tracing-subscriber`]
