@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/joshka/tui-tracing/compare/v0.2.1...v0.2.2) - 2026-05-12
+
+### Other
+
+- Improve new-user onboarding docs ([#54](https://github.com/joshka/tui-tracing/pull/54))
+- Decouple crossterm backend feature ([#55](https://github.com/joshka/tui-tracing/pull/55))
+- Document library architecture ([#52](https://github.com/joshka/tui-tracing/pull/52))
+- Add cargo-deny policy ([#51](https://github.com/joshka/tui-tracing/pull/51))
+- Enable auto-merge gate ([#49](https://github.com/joshka/tui-tracing/pull/49))
+
 ## [0.2.1](https://github.com/joshka/tui-tracing/compare/v0.2.0...v0.2.1) - 2026-05-11
 
 ### Other
