@@ -6,11 +6,21 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-24.04
-    if: ${{ github.repository_owner == 'joshka' }}
+    if: >-
+      ${{
+        github.repository_owner == 'joshka'
+        && (
+          github.event_name == 'workflow_dispatch'
+          || startsWith(github.event.head_commit.message, 'chore: release')
+        )
+      }}
     environment: crates-io
     permissions:
       contents: write
@@ -18,14 +28,16 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master
+        with:
+          toolchain: stable
       - name: Run release-plz
-        uses: release-plz/action@v0.5.129
+        uses: release-plz/action@064f4d1e36c843611ddf013be726beaa4ad804db # v0.5.129
         with:
           command: release
         env:
@@ -34,7 +46,12 @@ jobs:
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-24.04
-    if: ${{ github.repository_owner == 'joshka' }}
+    if: >-
+      ${{
+        github.repository_owner == 'joshka'
+        && github.event_name == 'push'
+        && !startsWith(github.event.head_commit.message, 'chore: release')
+      }}
     permissions:
       contents: write
       pull-requests: write
@@ -43,21 +60,25 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Generate GitHub App token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
           private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master
+        with:
+          toolchain: stable
       - name: Run release-plz
-        uses: release-plz/action@v0.5.129
+        uses: release-plz/action@064f4d1e36c843611ddf013be726beaa4ad804db # v0.5.129
         with:
           command: release-pr
         env:
