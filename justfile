@@ -43,7 +43,14 @@ machete *args:
 minimal-versions *args:
     cargo minimal-versions check --direct --workspace --all-targets --all-features {{ args }}
 
-ci: fmt-check check test clippy doc docs-rs markdown package audit deny machete minimal-versions
+workflow-lint *args:
+    actionlint -color=false .github/workflows/*.yml {{ args }}
+    zizmor .github/workflows {{ args }}
+
+typos *args:
+    typos {{ args }}
+
+ci: fmt-check check test clippy doc docs-rs markdown workflow-lint typos package audit deny machete minimal-versions
 
 demo-gif *args:
     mkdir -p target/vhs
